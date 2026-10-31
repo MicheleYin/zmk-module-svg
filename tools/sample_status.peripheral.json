@@ -12,6 +12,7 @@
     "wpm.current": 42,
     "output.selected": "ble",
     "layer.index": 2,
+    "split.connected": true,
     "display.half": "right"
   }
 }

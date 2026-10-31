@@ -633,7 +633,12 @@
       descriptors.filter((field) => field.roles.includes(state.statusRole)).forEach((field) => {
         const label = document.createElement("label");
         label.className = "inspector-field";
-        label.append(document.createTextNode(fieldLabels[field.id] || field.id.replaceAll(".", " · ")));
+        let fieldLabel = fieldLabels[field.id] || field.id.replaceAll(".", " · ");
+        if (field.id === "split.connected") {
+          fieldLabel = state.statusRole === "central" ? "Peripheral connection" : "Central connection";
+          label.title = field.role_descriptions?.[state.statusRole] || "";
+        }
+        label.append(document.createTextNode(fieldLabel));
         let input;
         if (field.id === "ble.active_profile") {
           input = document.createElement("select");

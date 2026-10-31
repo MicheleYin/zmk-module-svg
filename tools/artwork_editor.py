@@ -245,6 +245,7 @@ def design_status(preview_server: LivePreviewServer) -> dict[str, Any]:
             "layer.index",
             "layer.name",
             "ble.active_profile",
+            "split.connected",
         ):
             field = preview_server.fields.get(field_id)
             if field is not None:

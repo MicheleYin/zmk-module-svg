@@ -477,17 +477,21 @@ class NiceViewXmlValidationTests(unittest.TestCase):
             "layer.index",
             "layer.name",
             "ble.active_profile",
+            "split.connected",
         ):
             self.assertIn(field_id, fields)
         self.assertEqual(fields["layer.index"]["roles"], ["central", "peripheral"])
         self.assertEqual(fields["layer.name"]["roles"], ["central"])
         self.assertEqual(fields["ble.active_profile"]["roles"], ["central", "peripheral"])
+        self.assertEqual(fields["split.connected"]["roles"], ["central", "peripheral"])
         self.assertEqual(fields["ble.active_profile"]["minimum"], -1)
         self.assertEqual(fields["ble.active_profile"]["maximum"], 7)
         self.assertEqual(status["values"]["central"]["layer.name"], "BASE")
         self.assertNotIn("layer.name", status["values"]["peripheral"])
         self.assertEqual(status["values"]["central"]["ble.active_profile"], 0)
         self.assertEqual(status["values"]["peripheral"]["ble.active_profile"], 3)
+        self.assertIs(status["values"]["central"]["split.connected"], True)
+        self.assertIs(status["values"]["peripheral"]["split.connected"], True)
         self.assertEqual(status["values"]["central"]["battery.left.charge"], "charging")
         self.assertEqual(status["values"]["peripheral"]["battery.right.charge"], "discharging")
         self.assertEqual(status["values"]["central"]["battery.left.percent"], 87)
