@@ -1,0 +1,3 @@
+<fragment>
+  <lv_image src="{{icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="22" height="22" />
+</fragment>

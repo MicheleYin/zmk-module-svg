@@ -58,7 +58,17 @@ WIDGETS: dict[str, WidgetSpec] = {
     "zmk_status_text": WidgetSpec(
         None,
         frozenset(
-            {"field", "format", "role", "text", "long_mode", "font_size", "anchor"}
+            {
+                "field",
+                "format",
+                "role",
+                "text",
+                "long_mode",
+                "font_size",
+                "anchor",
+                "width",
+                "height",
+            }
         ),
     ),
     "zmk_status_bar": WidgetSpec(

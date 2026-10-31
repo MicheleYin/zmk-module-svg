@@ -39,6 +39,10 @@ def _default_value(field: dict[str, Any]) -> Any:
 def _format_value(value: Any, field: dict[str, Any], fmt: str) -> str:
     if value is None:
         return "--"
+    if fmt == "output-label":
+        return {"usb": "USB", "ble": "BLE", "none": "--"}.get(
+            str(value), str(value)
+        )
     if fmt == "profile-number":
         profile_index = int(value)
         return str(profile_index + 1) if profile_index >= 0 else "-"
@@ -84,7 +88,7 @@ def preview_xml_text(
     screen_width = (
         _coord(view, "width", PREVIEW_WIDTH) if view is not None else PREVIEW_WIDTH
     )
-    for element in root.iter():
+    for element in list(root.iter()):
         field_id = element.get("field")
         if element.tag == "zmk_status_text" and field_id:
             field = fields[field_id]
@@ -105,22 +109,34 @@ def preview_xml_text(
                 element, "font_size", 11 if element.get("format") == "percent" else 10
             )
             x = _coord(element, "x")
+            y = _coord(element, "y")
+            width = _coord(element, "width")
+            height = _coord(element, "height")
             anchor = element.get("anchor", "start")
             alignment = "left"
-            if anchor == "middle":
-                x -= screen_width // 2
-                alignment = "center"
-            elif anchor == "end":
-                x -= screen_width
-                alignment = "right"
+            if width > 0:
+                line_height = 24 if font_size >= 16 else 14 if font_size > 8 else 8
+                if height > 0:
+                    y += max((height - line_height) // 2, 0)
+                if anchor == "middle":
+                    alignment = "center"
+                elif anchor == "end":
+                    alignment = "right"
+            else:
+                if anchor == "middle":
+                    x -= screen_width // 2
+                    alignment = "center"
+                elif anchor == "end":
+                    x -= screen_width
+                    alignment = "right"
             element.tag = "lv_label"
             element.attrib.clear()
             element.attrib.update(attributes)
             element.set("text", text)
             element.set("x", str(x))
-            element.set("y", str(_coord(element, "y") - font_size))
-            element.set("width", str(screen_width))
-            element.set("height", str(max(font_size + 2, 10)))
+            element.set("y", str(y if width > 0 else y - font_size))
+            element.set("width", str(width if width > 0 else screen_width))
+            element.set("height", str(height if height > 0 else max(font_size + 2, 10)))
             element.set("style_text_align", alignment)
             element.set("style_text_font", _preview_font(font_size, monospace=True))
         elif element.tag == "lv_label" and element.get("text") is not None:
@@ -215,7 +231,7 @@ def _collect_drawables(
     element: ET.Element,
     origin_x: int,
     origin_y: int,
-    labels: list[tuple[int, int, str]],
+    labels: list[tuple[int, int, int, int, str, str]],
     bars: list[tuple[int, int, int, int]],
 ) -> None:
     if _is_hidden(element):
@@ -232,7 +248,16 @@ def _collect_drawables(
     if element.tag == "lv_label":
         text = element.get("text", "")
         if text:
-            labels.append((screen_x, screen_y, text))
+            labels.append(
+                (
+                    screen_x,
+                    screen_y,
+                    _coord(element, "width"),
+                    _coord(element, "height"),
+                    element.get("style_text_align", "left"),
+                    text,
+                )
+            )
         return
 
     if element.tag == "lv_obj" and element.get("style_bg_color") == "0x000000":
@@ -315,7 +340,7 @@ def preview_png(
         return
 
     Image, ImageDraw, ImageFont = _load_pillow()
-    labels: list[tuple[int, int, str]] = []
+    labels: list[tuple[int, int, int, int, str, str]] = []
     bars: list[tuple[int, int, int, int]] = []
     if view is not None:
         _collect_drawables(view, 0, 0, labels, bars)
@@ -349,7 +374,13 @@ def preview_png(
     mono = image.convert("1", dither=Image.Dither.NONE)
     draw = ImageDraw.Draw(mono)
     font = ImageFont.load_default()
-    for x, y, text in labels:
+    for x, y, label_width, _, alignment, text in labels:
+        text_bounds = draw.textbbox((0, 0), text, font=font)
+        text_width = text_bounds[2] - text_bounds[0]
+        if label_width > 0 and alignment == "center":
+            x += (label_width - text_width) // 2
+        elif label_width > 0 and alignment == "right":
+            x += label_width - text_width
         draw.text((x, y), text, fill=0, font=font)
     for x, y, bar_width, bar_height in bars:
         draw.rectangle(
@@ -386,7 +417,7 @@ def _preview_with_wasm(
         if parent is not None:
             parent.remove(element)
     with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as handle:
-        handle.write(ET.tostring(root, encoding="unicode"))
+        handle.write(ET.tostring(root, encoding="unicode", short_empty_elements=False))
         xml_path = handle.name
     with tempfile.NamedTemporaryFile(suffix=".rgba", delete=False) as handle:
         rendered_path = Path(handle.name)

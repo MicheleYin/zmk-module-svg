@@ -5,11 +5,15 @@ from __future__ import annotations
 import json
 import io
 import mimetypes
+import re
 import subprocess
 import sys
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 import webbrowser
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -32,6 +36,7 @@ if __package__:
         HALVES,
         PROFILE_SIZES,
         ROOT,
+        available_lucide_icons,
         export_profile_design,
         load_profile_design,
         load_visual_modules,
@@ -53,6 +58,7 @@ else:
         HALVES,
         PROFILE_SIZES,
         ROOT,
+        available_lucide_icons,
         export_profile_design,
         load_profile_design,
         load_visual_modules,
@@ -78,9 +84,19 @@ SUPPORTED_SUFFIXES = {
     ".tif",
     ".tiff",
     ".webp",
+    ".svg",
 }
 PAGE_PATH = Path(__file__).with_name("artwork_editor.html")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+LUCIDE_ICON_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+LUCIDE_ICON_LIMIT = 128 * 1024
+LUCIDE_ICON_ELEMENTS = {"svg", "g", "path", "line", "polyline", "polygon", "rect", "circle", "ellipse"}
+LUCIDE_ICON_ATTRIBUTES = {
+    "xmlns", "width", "height", "viewBox", "fill", "stroke", "stroke-width",
+    "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "stroke-dasharray",
+    "stroke-dashoffset", "fill-rule", "clip-rule", "opacity", "cx", "cy", "r",
+    "x", "y", "x1", "x2", "y1", "y2", "rx", "ry", "points", "d", "transform",
+}
 
 
 def load_settings(input_dir: Path) -> dict[str, Any]:
@@ -136,6 +152,137 @@ def fit_image(
     )
     canvas.alpha_composite(contained, position)
     return canvas
+
+
+def image_dimensions(path: Path) -> tuple[int, int, int]:
+    if path.suffix.lower() == ".svg":
+        root = ET.parse(path).getroot()
+        view_box = root.get("viewBox", "").replace(",", " ").split()
+
+        def parse_length(value: str | None, fallback: int) -> int:
+            match = re.match(r"\s*([0-9]+(?:\.[0-9]*)?|\.[0-9]+)", value or "")
+            return round(float(match.group(1))) if match else fallback
+
+        try:
+            if len(view_box) == 4:
+                width, height = round(float(view_box[2])), round(float(view_box[3]))
+            else:
+                width = parse_length(root.get("width"), 160)
+                height = parse_length(root.get("height"), 68)
+        except (ValueError, OverflowError) as error:
+            raise ValueError("SVG artwork has invalid dimensions") from error
+        if width < 1 or height < 1:
+            raise ValueError("SVG artwork has invalid dimensions")
+        return width, height, 1
+    with Image.open(path) as image:
+        return image.width, image.height, getattr(image, "n_frames", 1)
+
+
+def _download_lucide_icon(name: str) -> bytes:
+    request = urllib.request.Request(
+        f"https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/{name}.svg",
+        headers={"User-Agent": "zmk-screen-designer"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            source = response.read(LUCIDE_ICON_LIMIT + 1)
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise ValueError(f"could not import Lucide icon '{name}'") from error
+    if len(source) > LUCIDE_ICON_LIMIT:
+        raise ValueError("Lucide SVG exceeds the size limit")
+    return source
+
+
+def _validate_lucide_svg(source: bytes) -> str:
+    try:
+        svg = ET.fromstring(source)
+    except ET.ParseError as error:
+        raise ValueError("Lucide returned invalid SVG") from error
+    if svg.tag.rsplit("}", 1)[-1] != "svg":
+        raise ValueError("Lucide returned a non-SVG file")
+    for element in svg.iter():
+        if element.tag.rsplit("}", 1)[-1] not in LUCIDE_ICON_ELEMENTS:
+            raise ValueError("Lucide SVG contains unsupported elements")
+        attributes = {key.rsplit("}", 1)[-1] for key in element.attrib}
+        if attributes - LUCIDE_ICON_ATTRIBUTES:
+            raise ValueError("Lucide SVG contains unsupported attributes")
+    return source.decode("utf-8").replace("currentColor", "#000000")
+
+
+def import_lucide_icon(name: str, root: Path = ROOT) -> dict[str, str]:
+    if not isinstance(name, str) or not LUCIDE_ICON_NAME.fullmatch(name):
+        raise ValueError("enter a Lucide icon name using lowercase letters and hyphens")
+
+    icon_dir = root / "docs" / "ui" / "assets" / "lucide"
+    icon_path = icon_dir / f"{name}.svg"
+    if not icon_path.is_file():
+        sanitized_svg = _validate_lucide_svg(_download_lucide_icon(name))
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        icon_path.write_text(sanitized_svg, encoding="utf-8")
+
+    return {"name": name, "src": f"../assets/lucide/{icon_path.name}"}
+
+
+def design_status(preview_server: LivePreviewServer) -> dict[str, Any]:
+    with preview_server.state_lock:
+        config = preview_server.preview_config
+        bindings = {binding["id"]: dict(binding) for binding in config["bindings"]}
+        output_field = preview_server.fields["output.selected"]
+        bindings.setdefault(
+            "output.selected",
+            {
+                **output_field,
+                "id": "output.selected",
+                "roles": list(output_field["available_on"]),
+                "renderers": [],
+            },
+        )
+        for field_id in (
+            "battery.left.charge",
+            "battery.left.percent",
+            "battery.right.charge",
+            "battery.right.percent",
+            "layer.index",
+            "layer.name",
+            "ble.active_profile",
+        ):
+            field = preview_server.fields.get(field_id)
+            if field is not None:
+                bindings.setdefault(
+                    field_id,
+                    {
+                        **field,
+                        "id": field_id,
+                        "roles": list(field["available_on"]),
+                        "renderers": [],
+                    },
+                )
+        values = {}
+        for role in ("central", "peripheral"):
+            fixture_path = Path(__file__).with_name(f"sample_status.{role}.json")
+            fixture = json.loads(fixture_path.read_text(encoding="utf-8")).get(
+                "values", {}
+            )
+            values[role] = {
+                field_id: config["values"].get(role, {}).get(
+                    field_id, fixture.get(field_id, _default_status_value(field))
+                )
+                for field_id, field in bindings.items()
+                if role in field.get("available_on", field.get("roles", []))
+            }
+        return {"bindings": list(bindings.values()), "values": values}
+
+
+def _default_status_value(field: dict[str, Any]) -> Any:
+    if field["type"] == "enum":
+        return field["values"][0]
+    if field["type"] == "boolean":
+        return False
+    if field["type"] == "bitmask":
+        return 0
+    if field["type"] == "string":
+        return field.get("default", "")
+    return field.get("minimum", 0)
 
 
 def save_settings(input_dir: Path, data: dict[str, Any]) -> dict[str, Any]:
@@ -246,6 +393,9 @@ class ArtworkEditorHandler(BaseHTTPRequestHandler):
         if path.path == "/api/settings":
             self._json(200, load_settings(self.server.input_dir))
             return
+        if path.path == "/api/lucide-icons":
+            self._json(200, {"icons": available_lucide_icons()})
+            return
         if path.path == "/api/modules":
             modules = load_visual_modules()
             self._json(200, {"modules": list(modules.values())})
@@ -261,6 +411,10 @@ class ArtworkEditorHandler(BaseHTTPRequestHandler):
                 {"profile": profile, "halves": load_profile_design(profile)},
             )
             return
+        if path.path == "/api/design/status":
+            preview_server = self.server.preview_server
+            self._json(200, design_status(preview_server))
+            return
         if path.path == "/api/design/preview":
             query = parse_qs(path.query)
             try:
@@ -269,6 +423,36 @@ class ArtworkEditorHandler(BaseHTTPRequestHandler):
                 self._json(400, {"error": str(error)})
                 return
             self._send(200, "image/png", png)
+            return
+        if path.path == "/api/design/animation":
+            query = parse_qs(path.query)
+            side = query.get("side", ["left"])[0]
+            try:
+                speed = float(query.get("speed", ["1"])[0])
+                if side not in HALVES or not 0.25 <= speed <= 4:
+                    raise ValueError("invalid animation side or speed")
+                preview_server = self.server.preview_server
+                role = "central" if side == "left" else "peripheral"
+                with preview_server.state_lock:
+                    screen_path = preview_server.screen_paths[HALVES.index(side)]
+                    fields = preview_server.fields
+                    values = dict(preview_server.preview_config["values"][role])
+                xml_text = expand_screen_file(screen_path)
+                rendered = preview_xml_text(xml_text, fields, values, role)
+                if __package__:
+                    from tools.render_xml_gallery import render_animated_screen_gif
+                else:
+                    from render_xml_gallery import render_animated_screen_gif
+                with tempfile.TemporaryDirectory(prefix="screen-designer-animation-") as directory:
+                    output = render_animated_screen_gif(
+                        rendered, screen_path, Path(directory), "preview", speed=speed
+                    )
+                    if output is None:
+                        self._json(200, {"animated": False})
+                    else:
+                        self._send(200, "image/gif", output.read_bytes())
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                self._json(400, {"error": str(error)})
             return
         if path.path == "/api/xml-preview":
             self._json(200, {"url": self.server.xml_preview_url})
@@ -280,16 +464,16 @@ class ArtworkEditorHandler(BaseHTTPRequestHandler):
                 if not image_path.is_file() or image_path.suffix.lower() not in SUPPORTED_SUFFIXES:
                     continue
                 try:
-                    with Image.open(image_path) as image:
-                        images.append(
-                            {
-                                "name": image_path.name,
-                                "width": image.width,
-                                "height": image.height,
-                                "frames": getattr(image, "n_frames", 1),
-                                **settings_for_image(settings, image_path.name),
-                            }
-                        )
+                    width, height, frames = image_dimensions(image_path)
+                    images.append(
+                        {
+                            "name": image_path.name,
+                            "width": width,
+                            "height": height,
+                            "frames": frames,
+                            **settings_for_image(settings, image_path.name),
+                        }
+                    )
                 except OSError:
                     continue
             self._json(200, {"profile": settings["profile"], "images": images})
@@ -309,6 +493,11 @@ class ArtworkEditorHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         try:
             body = self._read_body()
+            if path == "/api/lucide-import":
+                data = json.loads(body)
+                icon = import_lucide_icon(data.get("name"))
+                self._json(201, icon)
+                return
             if path == "/api/settings":
                 data = json.loads(body)
                 self._json(200, save_settings(self.server.input_dir, data))
@@ -337,6 +526,9 @@ class ArtworkEditorHandler(BaseHTTPRequestHandler):
                         raise ValueError(
                             preview_server.reload_error or "could not render design"
                         )
+                    self._apply_status_values(
+                        preview_server, data.get("status_values")
+                    )
                     self._json(200, {"profile": profile, "preview": "ready"})
                     return
                 if path == "/api/design/save":
@@ -408,6 +600,44 @@ class ArtworkEditorHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
             self._json(400, {"error": str(error)})
+
+    @staticmethod
+    def _apply_status_values(
+        preview_server: LivePreviewServer, supplied: Any
+    ) -> None:
+        if supplied is None:
+            return
+        if not isinstance(supplied, dict):
+            raise ValueError("status_values must be an object")
+        with preview_server.state_lock:
+            config = preview_server.preview_config
+            for role, role_values in supplied.items():
+                if role not in config["values"] or not isinstance(role_values, dict):
+                    raise ValueError(f"invalid status role: {role}")
+                for field_id, value in role_values.items():
+                    field = preview_server.fields.get(field_id)
+                    if field is None or role not in field["available_on"]:
+                        raise ValueError(f"status field is unavailable: {field_id}")
+                    field_type = field["type"]
+                    if field_type == "enum":
+                        if value not in field["values"]:
+                            raise ValueError(f"invalid value for status field: {field_id}")
+                    elif field_type == "boolean":
+                        if not isinstance(value, bool):
+                            raise ValueError(f"invalid value for status field: {field_id}")
+                    elif field_type == "string":
+                        if not isinstance(value, str):
+                            raise ValueError(f"invalid value for status field: {field_id}")
+                    elif field_type in {"percent", "integer", "bitmask"}:
+                        if isinstance(value, bool) or not isinstance(value, (int, float)):
+                            raise ValueError(f"invalid value for status field: {field_id}")
+                        if not field.get("minimum", 0) <= value <= field.get("maximum", 100):
+                            raise ValueError(f"value out of range for status field: {field_id}")
+                        if field_type in {"integer", "bitmask"} and not isinstance(value, int):
+                            raise ValueError(f"status field must be an integer: {field_id}")
+                    else:
+                        raise ValueError(f"unsupported status field type: {field_type}")
+                    config["values"][role][field_id] = value
 
 
 def _start_xml_preview_server() -> LivePreviewServer:

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Artwork Placement</title>
+  <title>Screen Design Studio</title>
   <style>
     :root {
       color-scheme: light;
@@ -21,6 +21,7 @@
       background: var(--paper);
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body { margin: 0; min-width: 320px; min-height: 100vh; }
     button, select { font: inherit; }
     button { color: inherit; }
@@ -85,7 +86,7 @@
     .position-readout { display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
     .control-help { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
     .build-note { margin-top: 14px; color: var(--muted); font-size: 11px; line-height: 1.45; }
-    .designer-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 260px; min-height: calc(100vh - 68px); }
+    .designer-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 260px; max-width: 1600px; min-height: calc(100vh - 68px); margin: 0 auto; }
     .designer-library, .designer-inspector { padding: 20px 15px; background: var(--panel); }
     .designer-library { border-right: 1px solid var(--line); }
     .designer-inspector { border-left: 1px solid var(--line); }
@@ -95,6 +96,11 @@
     .side-switch button { min-height: 34px; border: 0; background: transparent; cursor: pointer; font-size: 12px; }
     .side-switch button[aria-pressed="true"] { color: white; background: var(--green); }
     .module-picker { width: 100%; margin: 4px 0 8px; }
+    #add-module, #upload-artwork { width: 100%; }
+    #upload-artwork { margin-top: 7px; }
+    .lucide-import { display: grid; gap: 7px; margin: 16px 0 8px; }
+    .lucide-import input { width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--line); padding: 0 9px; background: white; color: var(--ink); }
+    .lucide-import button { width: 100%; }
     .module-list { display: grid; gap: 4px; margin-top: 14px; }
     .module-item { width: 100%; min-height: 38px; padding: 7px 9px; border: 1px solid transparent; background: transparent; text-align: left; cursor: pointer; font-size: 12px; }
     .module-item:hover { background: #f3f6f2; }
@@ -106,6 +112,13 @@
     .designer-canvas { width: 100%; max-width: 100%; cursor: crosshair; }
     .design-empty { padding: 16px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
     .inspector-title { margin: 5px 0 14px; font: 600 16px Georgia, serif; overflow-wrap: anywhere; }
+    .inspector-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+    .inspector-tabs button { min-height: 36px; border: 0; border-bottom: 2px solid transparent; background: transparent; cursor: pointer; color: var(--muted); }
+    .inspector-tabs button[aria-pressed="true"] { border-bottom-color: var(--green); color: var(--green-dark); }
+    .status-controls { max-height: 65vh; overflow: auto; }
+    .preview-playback { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+    .preview-playback label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+    .preview-playback select { min-height: 32px; }
     .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .field-grid label, .inspector-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
     .field-grid input, .inspector-field input, .inspector-field select { width: 100%; min-width: 0; min-height: 35px; border: 1px solid var(--line); padding: 0 8px; background: white; color: var(--ink); }
@@ -151,27 +164,27 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">AV</span><h1>Artwork placement</h1></div>
+    <div class="brand"><span class="brand-mark">AV</span><h1>Screen design studio</h1></div>
     <nav class="view-switch" aria-label="Design view">
-      <button id="artwork-view" type="button" aria-pressed="true">Artwork</button>
-      <button id="designer-view" type="button" aria-pressed="false">Screen designer</button>
-      <button id="xml-view" type="button" aria-pressed="false">XML preview</button>
+      <button id="artwork-view" type="button" aria-pressed="false" hidden>Artwork</button>
+      <button id="designer-view" type="button" aria-pressed="true">Screen designer</button>
+      <button id="xml-view" type="button" aria-pressed="false" hidden>XML preview</button>
     </nav>
     <div class="top-actions">
-      <label class="profile-control"><span class="small-label">Display</span>
-        <select id="profile" aria-label="Display profile">
+      <label class="profile-control"><span class="small-label">Screen type</span>
+        <select id="profile" aria-label="Screen type">
           <option value="nice-view">Nice!View · 160 x 68</option>
           <option value="oled">OLED · 128 x 32</option>
         </select>
       </label>
-      <button class="button" id="save">Save placement</button>
-      <button class="button primary" id="build">Save &amp; build gallery</button>
+      <button class="button" id="save" hidden>Save placement</button>
+      <button class="button primary" id="build" hidden>Save &amp; build gallery</button>
     </div>
   </header>
   <div class="layout" id="artwork-layout">
     <aside class="library" aria-label="Artwork files">
       <div class="section-head"><h2>Artwork</h2><span class="count" id="count">0 images</span></div>
-      <label class="upload">＋ Add image<input id="upload" type="file" accept="image/*"></label>
+      <label class="upload">＋ Add image<input id="upload" type="file" accept="image/*,.svg"></label>
       <div class="image-list" id="image-list"></div>
     </aside>
     <main class="workarea">
@@ -213,20 +226,34 @@
   </div>
   <main id="designer-workspace" hidden>
     <div class="designer-layout">
-      <aside class="designer-library" aria-label="Screen modules">
-        <div class="section-head"><h2>Modules</h2><span class="count" id="widget-count">0</span></div>
-        <nav class="side-switch" aria-label="Active half">
+      <aside class="designer-library" aria-label="Screen widgets">
+        <div class="section-head"><h2>Widgets</h2><span class="count" id="widget-count">0</span></div>
+        <nav class="side-switch" aria-label="Half to edit">
           <button type="button" data-side-choice="left" aria-pressed="true">Left</button>
           <button type="button" data-side-choice="right" aria-pressed="false">Right</button>
         </nav>
-        <label class="small-label" for="module-choice">Prepared widgets</label>
+        <label class="small-label" for="module-choice">Widget type</label>
         <select class="module-picker" id="module-choice"></select>
+        <label class="small-label" id="image-source-label" for="image-source">Artwork source</label>
+        <select class="module-picker" id="image-source"></select>
         <button class="button primary" id="add-module" type="button">＋ Add widget</button>
+        <button class="button" id="upload-artwork" type="button">Upload artwork</button>
+        <form class="lucide-import" id="lucide-import-form">
+          <label class="small-label" for="lucide-name">Lucide icon name</label>
+          <input id="lucide-name" type="text" autocomplete="off" placeholder="bluetooth-off">
+          <button class="button" id="import-lucide" type="submit">Import from Lucide</button>
+        </form>
         <div class="module-list" id="module-list"></div>
       </aside>
       <main class="designer-workarea">
         <div class="eyebrow">Composed XML screen</div>
         <h2 id="designer-heading">Nice!View · 160 x 68</h2>
+        <div class="preview-playback" aria-label="Animation playback controls">
+          <button class="button" id="animation-toggle" type="button" aria-pressed="true" disabled>Play animation</button>
+          <label>Speed<select id="animation-speed" aria-label="Animation speed">
+            <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+          </select></label>
+        </div>
         <div class="canvas-pair">
           <section class="design-panel" aria-label="Left display preview">
             <h3>Left half</h3>
@@ -237,43 +264,49 @@
             <div class="designer-canvas-shell"><canvas class="designer-canvas" id="design-right" width="160" height="68" tabindex="0" aria-label="Right screen canvas; drag widgets to position and drag a corner to resize"></canvas></div>
           </section>
         </div>
-        <p class="stage-note"><span>Drag widgets to move; drag the lower-right handle to resize. Select empty background to adjust its crop.</span><span id="designer-dimensions">160 x 68</span></p>
+        <p class="stage-note"><span>Drag items to move; drag the lower-right handle to resize.</span><span id="designer-dimensions">160 x 68</span></p>
         <output class="designer-status" id="designer-status" aria-live="polite">Loading prepared modules…</output>
       </main>
-      <aside class="designer-inspector" aria-label="Selected module settings">
-        <h2>Properties</h2>
-        <div id="no-selection" class="design-empty">Select a widget or choose a background image for this half.</div>
-        <section id="widget-inspector" class="inspector-section" hidden>
-          <div class="inspector-title" id="widget-title"></div>
+      <aside class="designer-inspector" aria-label="Selected widget settings">
+        <nav class="inspector-tabs" aria-label="Inspector panel">
+          <button type="button" data-inspector-tab="properties" aria-pressed="true">Properties</button>
+          <button type="button" data-inspector-tab="keyboard" aria-pressed="false">Keyboard state</button>
+        </nav>
+        <section id="properties-panel">
+        <div id="no-selection" class="design-empty">Select an item or add a widget to this half.</div>
+        <section id="item-inspector" class="inspector-section" hidden>
+          <div class="inspector-title" id="item-title"></div>
           <div class="field-grid">
-            <label>X<input type="number" id="widget-x" min="0"></label>
-            <label>Y<input type="number" id="widget-y" min="0"></label>
-            <label>Width<input type="number" id="widget-width" min="1"></label>
-            <label>Height<input type="number" id="widget-height" min="1"></label>
+            <label>X<input type="number" id="item-x" min="0"></label>
+            <label>Y<input type="number" id="item-y" min="0"></label>
+            <label>Width<input type="number" id="item-width" min="1"></label>
+            <label>Height<input type="number" id="item-height" min="1"></label>
           </div>
+          <section id="image-properties" class="inspector-section" hidden>
+            <label class="inspector-field">Source<select id="item-image-source"></select></label>
+            <label class="inspector-field">Image resize<select id="item-fit"><option value="cover">Crop to fill</option><option value="contain">Fit entire image</option></select></label>
+            <label class="inspector-field">Dithering<select id="item-dither"><option value="none">None</option><option value="floyd-steinberg">Floyd–Steinberg</option><option value="atkinson">Atkinson</option><option value="bayer">Bayer</option></select></label>
+            <label class="inspector-field">Crop position · horizontal<input type="range" id="item-focal-x" min="0" max="100" value="50"></label>
+            <label class="inspector-field">Crop position · vertical<input type="range" id="item-focal-y" min="0" max="100" value="50"></label>
+            <button class="button" id="item-rotate" type="button">Rotate 90°</button>
+          </section>
+          <section id="icon-properties" class="inspector-section" hidden>
+            <div id="module-icon-fields" class="field-grid"></div>
+          </section>
           <label class="inspector-field" id="battery-side-field" hidden>Battery side
             <select id="battery-side"><option value="left">Left battery</option><option value="right">Right battery</option></select>
           </label>
           <div class="designer-actions"><button class="button" id="remove-widget" type="button">Remove widget</button></div>
         </section>
-        <section id="background-inspector" class="inspector-section" hidden>
-          <div class="inspector-title">Background image</div>
-          <label class="inspector-field">Image
-            <select id="background-image"></select>
-          </label>
-          <label class="inspector-field">Fit
-            <select id="background-fit"><option value="cover">Cover</option><option value="contain">Contain</option></select>
-          </label>
-          <label class="inspector-field">Dithering
-            <select id="background-dither"><option value="none">None</option><option value="floyd-steinberg">Floyd–Steinberg</option><option value="atkinson">Atkinson</option><option value="bayer">Bayer</option></select>
-          </label>
-          <div class="inspector-section">
-            <label class="inspector-field">Horizontal focal point<input type="range" id="focal-x" min="0" max="100" value="50"></label>
-            <label class="inspector-field">Vertical focal point<input type="range" id="focal-y" min="0" max="100" value="50"></label>
-            <div class="tool-row"><button class="button" id="background-rotate" type="button">Rotate 90°</button><button class="button" id="remove-background" type="button">Clear</button></div>
-          </div>
-        </section>
         <div class="designer-actions"><button class="button" id="save-design" type="button">Save design</button><button class="button primary" id="build-design" type="button">Build firmware screens</button></div>
+        </section>
+        <section id="keyboard-panel" hidden>
+          <nav class="side-switch" aria-label="Simulated keyboard role">
+            <button type="button" data-status-role="central" aria-pressed="true">Central</button>
+            <button type="button" data-status-role="peripheral" aria-pressed="false">Peripheral</button>
+          </nav>
+          <div id="status-controls" class="status-controls"></div>
+        </section>
       </aside>
     </div>
   </main>
@@ -282,7 +315,7 @@
   </main>
   <script>
     const sizes = { "nice-view": [160, 68], oled: [128, 32] };
-    const state = { profile: "nice-view", images: [], selected: -1, imageSettings: {}, source: null, dragging: false, metrics: null, saveTimer: null, modules: [], design: null, activeSide: "left", selectedWidget: null, designerTimer: null, designerLoadedProfile: null, designPreviews: { left: null, right: null } };
+    const state = { profile: "nice-view", images: [], selected: -1, imageSource: "", imageSettings: {}, source: null, dragging: false, metrics: null, saveTimer: null, modules: [], lucideIcons: [], iconSource: "../assets/lucide/usb.svg", design: null, activeSide: "left", selectedItem: null, designerTimer: null, designerLoadedProfile: null, designPreviews: { left: null, right: null }, animationPreviews: { left: null, right: null }, animationUrls: [], animationPlaying: true, animationAvailable: false, statusValues: { central: {}, peripheral: {} }, statusData: null, statusRole: "central", inspectorTab: "properties" };
     const canvas = document.querySelector("#preview");
     const context = canvas.getContext("2d");
     const $ = (selector) => document.querySelector(selector);
@@ -418,7 +451,7 @@
     function activeDesign() { return state.design?.[state.activeSide] || null; }
     function screenSize() { return sizes[state.profile]; }
     function moduleFor(id) { return state.modules.find((module) => module.id === id); }
-    function selectedWidget() { return activeDesign()?.widgets.find((widget) => widget.id === state.selectedWidget) || null; }
+    function selectedItem() { return activeDesign()?.items.find((item) => item.id === state.selectedItem) || null; }
     function clamp(value, minimum, maximum) { return Math.max(minimum, Math.min(maximum, value)); }
 
     async function loadDesigner() {
@@ -427,18 +460,25 @@
         return;
       }
       try {
-        const [catalog, design] = await Promise.all([
+        const [catalog, design, icons] = await Promise.all([
           request("/api/modules"),
           request(`/api/design?profile=${encodeURIComponent(state.profile)}`),
+          request("/api/lucide-icons"),
         ]);
         state.modules = catalog.modules;
+        state.lucideIcons = icons.icons;
         state.design = design.halves;
+        state.statusData = await request("/api/design/status");
+        state.statusValues = state.statusData.values;
         state.designerLoadedProfile = state.profile;
-        state.selectedWidget = null;
+        state.selectedItem = null;
         populateModulePicker();
         renderDesigner();
-        await updateDesignerPreview();
-        setDesignerStatus("Design loaded. Add a widget or choose an image for either half.");
+        await updateDesignerPreview(false);
+        state.statusData = await request("/api/design/status");
+        state.statusValues = state.statusData.values;
+        renderStatusControls();
+        setDesignerStatus("Design loaded. Add widgets or artwork to either half.");
       } catch (error) {
         setDesignerStatus(error.message, true);
       }
@@ -447,12 +487,12 @@
     function populateModulePicker() {
       const picker = $("#module-choice");
       picker.replaceChildren();
-      const families = [...new Set(state.modules.filter((module) => module.id !== "background-image").map((module) => module.family))];
+      const pickerModules = state.modules.filter((module) => !["connection-grid", "connection-signal"].includes(module.id));
+      const families = [...new Set(pickerModules.map((module) => module.family))];
       families.forEach((family) => {
         const group = document.createElement("optgroup");
         group.label = family;
-        state.modules.filter((module) => module.family === family).forEach((module) => {
-          if (module.id === "background-image") return;
+        pickerModules.filter((module) => module.family === family).forEach((module) => {
           const option = document.createElement("option");
           option.value = module.id;
           option.textContent = module.label;
@@ -460,14 +500,33 @@
         });
         picker.append(group);
       });
+      updateAddWidgetControl();
     }
 
-    function populateBackgroundPicker() {
-      const picker = $("#background-image");
-      const background = activeDesign()?.background;
-      picker.replaceChildren(new Option("No background", ""));
-      state.images.forEach((image) => picker.add(new Option(image.name, image.name)));
-      picker.value = background?.image || "";
+    function updateAddWidgetControl() {
+      const isBackground = $("#module-choice").value === "background-image";
+      $("#image-source-label").hidden = !isBackground;
+      $("#image-source").hidden = !isBackground;
+      $("#add-module").textContent = isBackground ? "＋ Add background" : "＋ Add widget";
+      $("#add-module").disabled = isBackground && !$("#image-source").value;
+    }
+
+    function populateImagePicker(selector, selected = "") {
+      const picker = $(selector);
+      picker.replaceChildren(new Option("Choose artwork…", ""));
+      state.images.forEach((image) => picker.add(new Option(`${image.name}${image.frames > 1 ? ` · ${image.frames} frames` : ""}`, image.name)));
+      if (selected && !state.images.some((image) => image.name === selected)) picker.add(new Option(selected, selected));
+      picker.value = selected;
+    }
+
+    function populateLucidePicker(selector, selected = "") {
+      const picker = $(selector);
+      picker.replaceChildren();
+      state.lucideIcons.forEach((icon) => picker.add(new Option(icon.name, icon.src)));
+      if (selected && !state.lucideIcons.some((icon) => icon.src === selected)) {
+        picker.add(new Option(selected.split("/").at(-1).replace(/\.svg$/, ""), selected));
+      }
+      picker.value = selected;
     }
 
     function renderDesigner() {
@@ -487,18 +546,17 @@
       const list = $("#module-list");
       const design = activeDesign();
       list.replaceChildren();
-      const items = [];
-      if (design.background) items.push({ id: "background", module: "background-image", label: `Background · ${design.background.image}` });
-      design.widgets.forEach((widget) => items.push({ ...widget, label: moduleFor(widget.module)?.label || widget.module }));
-      $("#widget-count").textContent = `${design.widgets.length} widget${design.widgets.length === 1 ? "" : "s"}`;
-      items.forEach((item) => {
+      $("#widget-count").textContent = `${design.items.length} item${design.items.length === 1 ? "" : "s"}`;
+      populateImagePicker("#image-source", state.imageSource);
+      updateAddWidgetControl();
+      design.items.forEach((item) => {
         const button = document.createElement("button");
         button.className = "module-item";
         button.type = "button";
-        button.textContent = item.label;
-        button.setAttribute("aria-current", String(item.id === state.selectedWidget));
+        button.textContent = item.kind === "image" ? `Background · ${item.properties.image}` : (moduleFor(item.module)?.label || item.module);
+        button.setAttribute("aria-current", String(item.id === state.selectedItem));
         button.addEventListener("click", () => {
-          state.selectedWidget = item.id;
+          state.selectedItem = item.id;
           renderDesigner();
         });
         list.append(button);
@@ -507,33 +565,109 @@
 
     function renderInspector() {
       const design = activeDesign();
-      const widget = selectedWidget();
-      const showBackground = !widget;
-      $("#no-selection").hidden = Boolean(widget || showBackground);
-      $("#widget-inspector").hidden = !widget;
-      $("#background-inspector").hidden = !showBackground;
-      if (widget) {
-        const module = moduleFor(widget.module);
-        $("#widget-title").textContent = module?.label || widget.module;
-        $("#widget-x").value = widget.x;
-        $("#widget-y").value = widget.y;
-        $("#widget-width").value = widget.width;
-        $("#widget-height").value = widget.height;
-        const hasSide = module?.controls.includes("side");
-        $("#battery-side-field").hidden = !hasSide;
-        if (hasSide) $("#battery-side").value = widget.properties.side;
-      }
-      if (showBackground) {
-        populateBackgroundPicker();
-        const background = design.background;
-        $("#background-fit").value = background?.fit || "cover";
-        $("#background-dither").value = background?.dither || "none";
-        $("#focal-x").value = Math.round((background?.focal_x ?? 0.5) * 100);
-        $("#focal-y").value = Math.round((background?.focal_y ?? 0.5) * 100);
-        ["#background-fit", "#background-dither", "#focal-x", "#focal-y", "#background-rotate", "#remove-background"].forEach((selector) => {
-          $(selector).disabled = !background;
+      const item = selectedItem();
+      $("#no-selection").hidden = Boolean(item);
+      $("#item-inspector").hidden = !item;
+      if (item) {
+        const isImage = item.kind === "image";
+        const module = isImage ? null : moduleFor(item.module);
+        $("#item-title").textContent = isImage ? item.properties.image : (module?.label || item.module);
+        $("#item-x").value = item.x;
+        $("#item-y").value = item.y;
+        $("#item-width").value = item.width;
+        $("#item-height").value = item.height;
+        $("#image-properties").hidden = !isImage;
+        const iconProperties = isImage ? [] : (module?.controls || []).filter((property) => property === "icon_src" || property.endsWith("_icon_src"));
+        const iconLabels = {
+          icon_src: "Icon",
+          usb_icon_src: "USB icon",
+          ble_icon_src: "Bluetooth icon",
+          none_icon_src: "Disconnected icon",
+          charging_icon_src: "Charging icon",
+          idle_icon_src: "Not charging icon",
+          connected_icon_src: "Connected icon",
+          disconnected_icon_src: "Not connected icon",
+        };
+        const iconFields = $("#module-icon-fields");
+        iconFields.replaceChildren();
+        $("#icon-properties").hidden = iconProperties.length === 0;
+        iconProperties.forEach((property) => {
+          const label = document.createElement("label");
+          label.className = "inspector-field";
+          label.textContent = iconLabels[property] || property;
+          const picker = document.createElement("select");
+          picker.id = `item-${property}`;
+          picker.dataset.iconProperty = property;
+          label.append(picker);
+          iconFields.append(label);
+          populateLucidePicker(`#${picker.id}`, item.properties[property]);
         });
+        const hasSide = !isImage && module?.controls.includes("side");
+        $("#battery-side-field").hidden = !hasSide;
+        if (hasSide) $("#battery-side").value = item.properties.side;
+        if (isImage) {
+          populateImagePicker("#item-image-source", item.properties.image);
+          $("#item-fit").value = item.properties.fit;
+          $("#item-dither").value = item.properties.dither;
+          $("#item-focal-x").value = Math.round(item.properties.focal_x * 100);
+          $("#item-focal-y").value = Math.round(item.properties.focal_y * 100);
+        }
       }
+    }
+
+    function renderStatusControls() {
+      const controls = $("#status-controls");
+      controls.replaceChildren();
+      const descriptors = state.statusData?.bindings || [];
+      const values = state.statusValues[state.statusRole] || {};
+      const fieldLabels = {
+        "battery.left.charge": "Left battery · Charge state",
+        "battery.left.percent": "Left battery · Charge percentage",
+        "battery.right.charge": "Right battery · Charge state",
+        "battery.right.percent": "Right battery · Charge percentage",
+        "layer.index": "Layer index",
+        "layer.name": "Layer name",
+        "ble.active_profile": "Active BLE profile",
+        "output.selected": "Connection mode",
+      };
+      descriptors.filter((field) => field.roles.includes(state.statusRole)).forEach((field) => {
+        const label = document.createElement("label");
+        label.className = "inspector-field";
+        label.append(document.createTextNode(fieldLabels[field.id] || field.id.replaceAll(".", " · ")));
+        let input;
+        if (field.id === "ble.active_profile") {
+          input = document.createElement("select");
+          input.add(new Option("None", "-1"));
+          for (let profile = 0; profile <= field.maximum; profile++) {
+            input.add(new Option(`Profile ${profile + 1}`, String(profile)));
+          }
+        } else if (field.type === "enum") {
+          input = document.createElement("select");
+          field.values.forEach((value) => input.add(new Option(value, value)));
+        } else {
+          input = document.createElement("input");
+          input.type = field.type === "boolean" ? "checkbox" : field.type === "percent" ? "range" : field.type === "string" ? "text" : "number";
+          if (field.type === "percent") { input.min = "0"; input.max = "100"; }
+          if (field.type === "integer" || field.type === "bitmask") {
+            input.min = field.minimum ?? 0;
+            input.max = field.maximum ?? 255;
+            input.step = "1";
+          }
+        }
+        const value = values[field.id];
+        if (field.type === "boolean") input.checked = Boolean(value);
+        else input.value = value ?? "";
+        input.addEventListener("input", () => {
+          state.statusValues[state.statusRole][field.id] = field.type === "boolean" ? input.checked : field.type === "percent" || field.type === "integer" || field.type === "bitmask" ? Number(input.value) : input.value;
+          clearTimeout(state.designerTimer);
+          state.designerTimer = setTimeout(async () => {
+            try { await updateDesignerPreview(); setDesignerStatus("Keyboard state updated."); }
+            catch (error) { setDesignerStatus(error.message, true); }
+          }, 180);
+        });
+        label.append(input);
+        controls.append(label);
+      });
     }
 
     function drawDesignerCanvas(side) {
@@ -543,35 +677,43 @@
       canvas.height = height;
       canvas.style.setProperty("--ratio", `${width} / ${height}`);
       const context = canvas.getContext("2d");
-      context.fillStyle = "#fff";
-      context.fillRect(0, 0, width, height);
-      const image = state.designPreviews[side];
-      if (image) context.drawImage(image, 0, 0, width, height);
+      const animation = state.animationPlaying ? state.animationPreviews[side] : null;
+      const background = animation ? `url("${animation.src}")` : "none";
+      if (canvas.style.backgroundImage !== background) canvas.style.backgroundImage = background;
+      canvas.style.backgroundSize = "100% 100%";
+      canvas.style.backgroundPosition = "center";
+      canvas.style.backgroundRepeat = "no-repeat";
+      context.clearRect(0, 0, width, height);
+      if (!animation) {
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, width, height);
+        const image = state.designPreviews[side];
+        if (image) context.drawImage(image, 0, 0, width, height);
+      }
       const design = state.design?.[side];
       if (!design) return;
-      design.widgets.forEach((widget) => {
-        const selected = side === state.activeSide && widget.id === state.selectedWidget;
+      design.items.forEach((item) => {
+        const selected = side === state.activeSide && item.id === state.selectedItem;
         context.fillStyle = selected ? "#17684f22" : "#d95c4620";
         context.strokeStyle = selected ? "#17684f" : "#d95c46";
         context.lineWidth = 1;
-        context.fillRect(widget.x, widget.y, widget.width, widget.height);
-        context.strokeRect(widget.x + 0.5, widget.y + 0.5, widget.width - 1, widget.height - 1);
+        context.fillRect(item.x, item.y, item.width, item.height);
+        context.strokeRect(item.x + 0.5, item.y + 0.5, item.width - 1, item.height - 1);
         context.fillStyle = selected ? "#17684f" : "#d95c46";
-        context.fillRect(widget.x + widget.width - 3, widget.y + widget.height - 3, 3, 3);
+        context.fillRect(item.x + item.width - 3, item.y + item.height - 3, 3, 3);
       });
-      if (side === state.activeSide && state.selectedWidget === "background" && design.background) {
-        context.strokeStyle = "#17684f";
-        context.lineWidth = 1;
-        context.strokeRect(0.5, 0.5, width - 1, height - 1);
-      }
     }
 
-    async function updateDesignerPreview() {
+    async function updateDesignerPreview(applyStatusValues = true) {
       if (!state.design) return;
       await request("/api/design/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile: state.profile, halves: state.design }),
+        body: JSON.stringify({
+          profile: state.profile,
+          halves: state.design,
+          ...(applyStatusValues ? { status_values: state.statusValues } : {}),
+        }),
       });
       await Promise.all(["left", "right"].map(async (side) => {
         const response = await fetch(`/api/design/preview?side=${side}&v=${Date.now()}`);
@@ -581,6 +723,32 @@
         await image.decode();
         state.designPreviews[side] = image;
       }));
+      renderDesigner();
+      await loadAnimationPreviews();
+    }
+
+    async function loadAnimationPreviews() {
+      if (!state.animationPlaying && state.animationAvailable) return;
+      state.animationUrls.forEach(URL.revokeObjectURL);
+      state.animationUrls = [];
+      const loaded = await Promise.all(["left", "right"].map(async (side) => {
+        const speed = $("#animation-speed").value;
+        const response = await fetch(`/api/design/animation?side=${side}&speed=${speed}&v=${Date.now()}`);
+        if (!response.ok) throw new Error((await response.json()).error || "Animation preview failed");
+        if (response.headers.get("Content-Type")?.includes("application/json")) return [side, null];
+        const url = URL.createObjectURL(await response.blob());
+        state.animationUrls.push(url);
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        return [side, image];
+      }));
+      state.animationPreviews = Object.fromEntries(loaded);
+      state.animationAvailable = loaded.some(([, image]) => image);
+      state.animationPlaying = state.animationAvailable;
+      $("#animation-toggle").disabled = !state.animationAvailable;
+      $("#animation-toggle").textContent = state.animationPlaying ? "Pause animation" : "Play animation";
+      $("#animation-toggle").setAttribute("aria-pressed", String(state.animationPlaying));
       renderDesigner();
     }
 
@@ -606,33 +774,66 @@
     function addWidget() {
       const module = moduleFor($("#module-choice").value);
       if (!module || !activeDesign()) return;
+      if (module.id === "background-image") {
+        addImage(true);
+        return;
+      }
       const [screenWidth, screenHeight] = screenSize();
       const width = Math.min(module.bounds.width, screenWidth);
       const height = Math.min(module.bounds.height, screenHeight);
-      const index = activeDesign().widgets.length;
+      const index = activeDesign().items.length;
       const x = Math.min(screenWidth - width, 2 + (index % 2) * Math.min(width + 3, screenWidth - width));
       const y = Math.min(screenHeight - height, 2 + Math.floor(index / 2) * Math.min(height + 3, screenHeight - height));
       const id = `widget-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
       const properties = {};
       module.controls.forEach((key) => { properties[key] = module.defaults[key]; });
-      activeDesign().widgets.push({ id, module: module.id, x, y, width, height, properties });
-      state.selectedWidget = id;
+      if (module.id === "lucide-icon") properties.icon_src = state.iconSource || module.defaults.icon_src;
+      activeDesign().items.push({ id, kind: "module", module: module.id, x, y, width, height, properties });
+      state.selectedItem = id;
+      scheduleDesignerPreview();
+    }
+
+    function addImage(background = false) {
+      const imageName = $("#image-source").value;
+      const source = state.images.find((image) => image.name === imageName);
+      if (!source || !activeDesign()) return;
+      const [screenWidth, screenHeight] = screenSize();
+      const width = background ? screenWidth : Math.min(80, screenWidth);
+      const height = background ? screenHeight : clamp(Math.round(width * source.height / source.width), 4, screenHeight);
+      const index = activeDesign().items.length;
+      const id = `image-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+      const item = {
+        id, kind: "image",
+        x: background ? 0 : Math.min(screenWidth - width, 2 + (index % 2) * Math.min(width + 3, screenWidth - width)),
+        y: background ? 0 : Math.min(screenHeight - height, 2 + Math.floor(index / 2) * Math.min(height + 3, screenHeight - height)),
+        width, height,
+        properties: { image: imageName, fit: "cover", focal_x: 0.5, focal_y: 0.5, rotation: 0, dither: "none" },
+      };
+      if (background) {
+        const firstWidget = activeDesign().items.findIndex((existing) => existing.kind !== "image");
+        activeDesign().items.splice(firstWidget < 0 ? activeDesign().items.length : firstWidget, 0, item);
+      } else activeDesign().items.push(item);
+      state.selectedItem = id;
+      state.imageSource = imageName;
       scheduleDesignerPreview();
     }
 
     function changeSelectedWidget(key, value) {
-      const widget = selectedWidget();
-      if (!widget) return;
+      const item = selectedItem();
+      if (!item) return;
       const [screenWidth, screenHeight] = screenSize();
-      if (key === "side") widget.properties.side = value;
+      if (key in item.properties) {
+        item.properties[key] = value;
+        if (key === "icon_src") state.iconSource = value;
+      }
       else {
         const number = Number(value);
         if (!Number.isFinite(number)) return;
-        widget[key] = Math.round(number);
-        widget.width = clamp(widget.width, 1, screenWidth - widget.x);
-        widget.height = clamp(widget.height, 1, screenHeight - widget.y);
-        widget.x = clamp(widget.x, 0, screenWidth - widget.width);
-        widget.y = clamp(widget.y, 0, screenHeight - widget.height);
+        item[key] = Math.round(number);
+        item.width = clamp(item.width, 1, screenWidth - item.x);
+        item.height = clamp(item.height, 1, screenHeight - item.y);
+        item.x = clamp(item.x, 0, screenWidth - item.width);
+        item.y = clamp(item.y, 0, screenHeight - item.height);
       }
       scheduleDesignerPreview();
     }
@@ -650,25 +851,21 @@
       const side = canvas.id === "design-left" ? "left" : "right";
       if (side !== state.activeSide) {
         state.activeSide = side;
-        state.selectedWidget = null;
+        state.selectedItem = null;
       }
       const point = designPoint(canvas, event);
       const design = activeDesign();
-      const widget = [...design.widgets].reverse().find((item) => point.x >= item.x && point.x <= item.x + item.width && point.y >= item.y && point.y <= item.y + item.height);
-      if (widget) {
-        state.selectedWidget = widget.id;
+      const item = [...design.items].reverse().find((candidate) => point.x >= candidate.x && point.x <= candidate.x + candidate.width && point.y >= candidate.y && point.y <= candidate.y + candidate.height);
+      if (item) {
+        state.selectedItem = item.id;
         state.drag = {
-          side, id: widget.id,
-          mode: point.x >= widget.x + widget.width - 5 && point.y >= widget.y + widget.height - 5 ? "resize" : "move",
+          side, id: item.id,
+          mode: point.x >= item.x + item.width - 5 && point.y >= item.y + item.height - 5 ? "resize" : "move",
           point,
         };
         canvas.setPointerCapture(event.pointerId);
-      } else if (design.background) {
-        state.selectedWidget = "background";
-        state.drag = { side, id: "background", mode: "focal", point };
-        canvas.setPointerCapture(event.pointerId);
       } else {
-        state.selectedWidget = "background";
+        state.selectedItem = null;
         state.drag = null;
       }
       renderDesigner();
@@ -679,21 +876,15 @@
       const point = designPoint(canvas, event);
       const deltaX = point.x - state.drag.point.x;
       const deltaY = point.y - state.drag.point.y;
-      const design = state.design[state.drag.side];
-      if (state.drag.mode === "focal") {
-        design.background.focal_x = clamp(design.background.focal_x - deltaX / 48, 0, 1);
-        design.background.focal_y = clamp(design.background.focal_y - deltaY / 24, 0, 1);
+      const item = state.design[state.drag.side].items.find((candidate) => candidate.id === state.drag.id);
+      if (!item) return;
+      const [width, height] = screenSize();
+      if (state.drag.mode === "resize") {
+        item.width = clamp(Math.round(item.width + deltaX), 4, width - item.x);
+        item.height = clamp(Math.round(item.height + deltaY), 4, height - item.y);
       } else {
-        const widget = design.widgets.find((item) => item.id === state.drag.id);
-        if (!widget) return;
-        const [width, height] = screenSize();
-        if (state.drag.mode === "resize") {
-          widget.width = clamp(Math.round(widget.width + deltaX), 4, width - widget.x);
-          widget.height = clamp(Math.round(widget.height + deltaY), 4, height - widget.y);
-        } else {
-          widget.x = clamp(Math.round(widget.x + deltaX), 0, width - widget.width);
-          widget.y = clamp(Math.round(widget.y + deltaY), 0, height - widget.height);
-        }
+        item.x = clamp(Math.round(item.x + deltaX), 0, width - item.width);
+        item.y = clamp(Math.round(item.y + deltaY), 0, height - item.height);
       }
       state.drag.point = point;
       renderDesigner();
@@ -757,6 +948,8 @@
       state.profile = data.profile;
       state.images = data.images;
       state.imageSettings = Object.fromEntries(data.images.map((image) => [image.name, { fit: image.fit, x: image.x, y: image.y, rotation: image.rotation }]));
+      if (selectName) state.imageSource = selectName;
+      else if (!state.images.some((image) => image.name === state.imageSource)) state.imageSource = state.images[0]?.name || "";
       $("#profile").value = state.profile;
       const selected = selectName ? state.images.findIndex((image) => image.name === selectName) : Math.min(state.selected, state.images.length - 1);
       state.selected = selected;
@@ -838,60 +1031,90 @@
 
     document.querySelectorAll("[data-side-choice]").forEach((button) => button.addEventListener("click", () => {
       state.activeSide = button.dataset.sideChoice;
-      state.selectedWidget = null;
+      state.selectedItem = null;
       renderDesigner();
     }));
     $("#add-module").addEventListener("click", addWidget);
+    $("#module-choice").addEventListener("change", updateAddWidgetControl);
+    $("#image-source").addEventListener("change", (event) => { state.imageSource = event.target.value; updateAddWidgetControl(); });
+    $("#upload-artwork").addEventListener("click", () => $("#upload").click());
+    $("#lucide-import-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = $("#lucide-name").value.trim();
+      if (!name) { setDesignerStatus("Enter a Lucide icon name.", true); return; }
+      const button = $("#import-lucide");
+      button.disabled = true;
+      try {
+        const icon = await request("/api/lucide-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        state.lucideIcons = (await request("/api/lucide-icons")).icons;
+        state.iconSource = icon.src;
+        renderDesigner();
+        $("#module-choice").value = "connection-icon";
+        $("#lucide-name").value = "";
+        updateAddWidgetControl();
+        setDesignerStatus(`Imported ${icon.name}. Choose it for a connection status icon or add a Lucide · Icon widget.`);
+      } catch (error) {
+        setDesignerStatus(error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
     $("#remove-widget").addEventListener("click", () => {
       const design = activeDesign();
-      design.widgets = design.widgets.filter((widget) => widget.id !== state.selectedWidget);
-      state.selectedWidget = null;
+      design.items = design.items.filter((item) => item.id !== state.selectedItem);
+      state.selectedItem = null;
       scheduleDesignerPreview();
     });
     ["x", "y", "width", "height"].forEach((key) => {
-      $(`#widget-${key}`).addEventListener("input", (event) => changeSelectedWidget(key, event.target.value));
+      $(`#item-${key}`).addEventListener("input", (event) => changeSelectedWidget(key, event.target.value));
     });
     $("#battery-side").addEventListener("change", (event) => changeSelectedWidget("side", event.target.value));
-    $("#background-image").addEventListener("change", (event) => {
-      const image = event.target.value;
-      const design = activeDesign();
-      design.background = image ? {
-        image, fit: "cover", focal_x: 0.5, focal_y: 0.5, rotation: 0, dither: "none",
-      } : null;
-      state.selectedWidget = design.background ? "background" : null;
+    $("#item-image-source").addEventListener("change", (event) => changeSelectedWidget("image", event.target.value));
+    $("#module-icon-fields").addEventListener("change", (event) => {
+      const property = event.target.dataset.iconProperty;
+      if (property) changeSelectedWidget(property, event.target.value);
+    });
+    $("#item-fit").addEventListener("change", (event) => changeSelectedWidget("fit", event.target.value));
+    $("#item-dither").addEventListener("change", (event) => changeSelectedWidget("dither", event.target.value));
+    $("#item-focal-x").addEventListener("input", (event) => changeSelectedWidget("focal_x", Number(event.target.value) / 100));
+    $("#item-focal-y").addEventListener("input", (event) => changeSelectedWidget("focal_y", Number(event.target.value) / 100));
+    $("#item-rotate").addEventListener("click", () => {
+      const item = selectedItem();
+      if (!item || item.kind !== "image") return;
+      item.properties.rotation = (item.properties.rotation + 90) % 360;
       scheduleDesignerPreview();
     });
-    $("#background-fit").addEventListener("change", (event) => {
-      if (!activeDesign().background) return;
-      activeDesign().background.fit = event.target.value;
-      scheduleDesignerPreview();
+    $("#animation-toggle").addEventListener("click", async () => {
+      state.animationPlaying = !state.animationPlaying;
+      $("#animation-toggle").textContent = state.animationPlaying ? "Pause animation" : "Play animation";
+      $("#animation-toggle").setAttribute("aria-pressed", String(state.animationPlaying));
+      if (state.animationPlaying) {
+        try { await loadAnimationPreviews(); }
+        catch (error) { state.animationPlaying = false; renderDesigner(); setDesignerStatus(error.message, true); }
+      } else {
+        renderDesigner();
+      }
     });
-    $("#background-dither").addEventListener("change", (event) => {
-      if (!activeDesign().background) return;
-      activeDesign().background.dither = event.target.value;
-      scheduleDesignerPreview();
+    $("#animation-speed").addEventListener("change", async () => {
+      if (!state.animationPlaying) return;
+      try { await loadAnimationPreviews(); }
+      catch (error) { setDesignerStatus(error.message, true); }
     });
-    $("#focal-x").addEventListener("input", (event) => {
-      if (!activeDesign().background) return;
-      activeDesign().background.focal_x = Number(event.target.value) / 100;
-      scheduleDesignerPreview();
-    });
-    $("#focal-y").addEventListener("input", (event) => {
-      if (!activeDesign().background) return;
-      activeDesign().background.focal_y = Number(event.target.value) / 100;
-      scheduleDesignerPreview();
-    });
-    $("#background-rotate").addEventListener("click", () => {
-      if (!activeDesign().background) return;
-      const background = activeDesign().background;
-      background.rotation = (background.rotation + 90) % 360;
-      scheduleDesignerPreview();
-    });
-    $("#remove-background").addEventListener("click", () => {
-      activeDesign().background = null;
-      state.selectedWidget = null;
-      scheduleDesignerPreview();
-    });
+    document.querySelectorAll("[data-inspector-tab]").forEach((button) => button.addEventListener("click", () => {
+      state.inspectorTab = button.dataset.inspectorTab;
+      $("#properties-panel").hidden = state.inspectorTab !== "properties";
+      $("#keyboard-panel").hidden = state.inspectorTab !== "keyboard";
+      document.querySelectorAll("[data-inspector-tab]").forEach((tab) => tab.setAttribute("aria-pressed", String(tab === button)));
+    }));
+    document.querySelectorAll("[data-status-role]").forEach((button) => button.addEventListener("click", () => {
+      state.statusRole = button.dataset.statusRole;
+      renderStatusControls();
+      document.querySelectorAll("[data-status-role]").forEach((tab) => tab.setAttribute("aria-pressed", String(tab === button)));
+    }));
     $("#save-design").addEventListener("click", () => saveDesign(false));
     $("#build-design").addEventListener("click", () => saveDesign(true));
 
@@ -909,12 +1132,12 @@
       designCanvas.addEventListener("keydown", (event) => {
         const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
         const move = moves[event.key];
-        const widget = selectedWidget();
-        if (!move || !widget) return;
+        const item = selectedItem();
+        if (!move || !item) return;
         event.preventDefault();
         const [width, height] = screenSize();
-        widget.x = clamp(widget.x + move[0], 0, width - widget.width);
-        widget.y = clamp(widget.y + move[1], 0, height - widget.height);
+        item.x = clamp(item.x + move[0], 0, width - item.width);
+        item.y = clamp(item.y + move[1], 0, height - item.height);
         scheduleDesignerPreview();
       });
     });
@@ -943,7 +1166,7 @@
     (async () => {
       try {
         await refreshImages();
-        await loadDesigner();
+        await switchView("designer");
       } catch (error) {
         setStatus(error.message, true);
       }

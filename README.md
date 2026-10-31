@@ -67,9 +67,12 @@ uv run --isolated --with-requirements tools/requirements.txt \
     python tools/artwork_gallery.py --interactive
 ```
 
-In **Screen designer**, choose backgrounds independently for each half, adjust
-fit, focal point, rotation, and dithering, then add and position prepared widgets.
-Save the design to XML or build firmware screens and the paired preview gallery.
+In **Screen designer**, select the screen type and the half to edit; both halves
+stay visible side by side. Choose **Image background** from **Widget type** to
+add one or more full-screen backgrounds, or choose a status widget. Resize items
+with the canvas handle or the size fields. For images, choose crop-to-fill or
+fit-entire-image, adjust the crop position, rotation, and dithering. Save the
+design to XML or build firmware screens and the paired preview gallery.
 The **XML preview** tab can inspect standard screens and generated artwork samples
 with interactive status fields.
 

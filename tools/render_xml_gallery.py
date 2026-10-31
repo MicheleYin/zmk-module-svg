@@ -162,56 +162,104 @@ def render_animated_screen_gif(
     output_dir: Path,
     prefix: str,
     dither_override: str | None = None,
+    speed: float = 1.0,
 ) -> Path | None:
     from PIL import Image
 
+    if not 0.25 <= speed <= 4:
+        raise ValueError("animation speed must be between 0.25 and 4")
     root = ET.fromstring(rendered_xml)
     animated_images = [
         element
         for element in root.iter("lv_image")
         if Path(element.get("src", "")).suffix.lower() == ".gif"
     ]
-    if len(animated_images) != 1:
+    if not animated_images:
         return None
 
-    image_element = animated_images[0]
-    source_path = (screen_path.parent / image_element.get("src", "")).resolve()
-    if not source_path.is_file():
-        return None
-    dither = dither_override or image_element.get("dither", "none")
-    frames = []
-    durations = []
-
+    animations = []
+    timeline_duration = 0
+    boundaries = {0}
+    frame_limit = 256
     with tempfile.TemporaryDirectory(prefix="zmk-screen-gif-") as temp_dir:
         temp_path = Path(temp_dir)
-        with Image.open(source_path) as source:
-            if source.format != "GIF" or source.n_frames < 2:
+        for image_index, image_element in enumerate(animated_images):
+            source_path = (screen_path.parent / image_element.get("src", "")).resolve()
+            if not source_path.is_file():
                 return None
-            repeat_count = source.info.get("loop", 0)
-            for frame_index in range(source.n_frames):
-                source.seek(frame_index)
-                duration = max(20, min(int(source.info.get("duration") or 100), 60000))
-                asset_path = temp_path / f"frame-{frame_index}.png"
-                source.convert("RGBA").save(asset_path)
+            with Image.open(source_path) as source:
+                if source.format != "GIF" or source.n_frames < 2:
+                    continue
+                image_frames = []
+                image_durations = []
+                for frame_index in range(source.n_frames):
+                    source.seek(frame_index)
+                    image_frames.append(source.convert("RGBA").copy())
+                    image_durations.append(
+                        max(20, min(int(source.info.get("duration") or 100), 60000))
+                    )
+            cycle_duration = sum(image_durations)
+            timeline_duration = max(timeline_duration, cycle_duration)
+            frame_paths = []
+            for frame_index, image_frame in enumerate(image_frames):
+                frame_path = temp_path / f"image-{image_index}-{frame_index}.png"
+                image_frame.save(frame_path)
+                frame_paths.append(frame_path)
+            animations.append(
+                {
+                    "source": image_element.get("src"),
+                    "paths": frame_paths,
+                    "durations": image_durations,
+                    "cycle": cycle_duration,
+                    "dither": dither_override or image_element.get("dither", "none"),
+                }
+            )
+        if not animations:
+            return None
+        for animation in animations:
+            elapsed = 0
+            while elapsed < timeline_duration:
+                for duration in animation["durations"]:
+                    elapsed += duration
+                    if elapsed < timeline_duration:
+                        boundaries.add(elapsed)
+                    if len(boundaries) > frame_limit:
+                        raise ValueError("composed animation exceeds 256 preview frames")
+        boundaries.add(timeline_duration)
+        times = sorted(boundaries)
+        if len(times) - 1 > frame_limit:
+            raise ValueError("composed animation exceeds 256 preview frames")
 
-                frame_root = ET.fromstring(rendered_xml)
-                frame_image = next(
-                    element
-                    for element in frame_root.iter("lv_image")
-                    if element.get("src") == image_element.get("src")
-                )
-                frame_image.set("src", str(asset_path))
-                frame_image.set("dither", dither)
-                preview_path = temp_path / f"screen-{frame_index}.png"
-                preview_png(
-                    ET.tostring(frame_root, encoding="unicode"),
-                    preview_path,
-                    screen_path,
-                    dither,
-                )
-                with Image.open(preview_path) as preview:
-                    frames.append(preview.convert("1").copy())
-                durations.append(duration)
+        frames = []
+        durations = []
+        for start, end in zip(times, times[1:]):
+            frame_root = ET.fromstring(rendered_xml)
+            image_nodes = {
+                element.get("src"): element
+                for element in frame_root.iter("lv_image")
+            }
+            for animation in animations:
+                elapsed = start % animation["cycle"]
+                frame_index = 0
+                for index, duration in enumerate(animation["durations"]):
+                    if elapsed < duration:
+                        frame_index = index
+                        break
+                    elapsed -= duration
+                    frame_index = (index + 1) % len(animation["paths"])
+                frame_image = image_nodes[animation["source"]]
+                frame_image.set("src", str(animation["paths"][frame_index]))
+                frame_image.set("dither", animation["dither"])
+            preview_path = temp_path / f"screen-{len(frames)}.png"
+            preview_png(
+                ET.tostring(frame_root, encoding="unicode"),
+                preview_path,
+                screen_path,
+                dither_override,
+            )
+            with Image.open(preview_path) as preview:
+                frames.append(preview.convert("1").copy())
+            durations.append(max(20, round((end - start) / speed)))
 
     if not frames:
         return None
@@ -222,7 +270,7 @@ def render_animated_screen_gif(
         save_all=True,
         append_images=frames[1:],
         duration=durations,
-        loop=repeat_count,
+        loop=0,
         disposal=2,
         optimize=True,
     )

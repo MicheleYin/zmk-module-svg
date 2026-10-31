@@ -5,12 +5,19 @@ import threading
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 from watchdog.observers import Observer
 
 from tools import artwork_gallery
+from tools.artwork_editor import (
+    ArtworkEditorHandler,
+    design_status,
+    image_dimensions,
+    import_lucide_icon,
+)
 from tools.nice_view_xml import (
     generate,
     load_catalog,
@@ -35,6 +42,7 @@ from tools.nice_view_xml_live import (
 )
 from tools.nice_view_xml_preview import preview_png, preview_xml_text
 from tools.screen_designer import (
+    available_lucide_icons,
     load_design_screen,
     load_visual_modules,
     write_design_screen,
@@ -382,6 +390,147 @@ class NiceViewXmlValidationTests(unittest.TestCase):
                 second_frame = animation.convert("1").tobytes()
                 self.assertNotEqual(first_frame, second_frame)
 
+    def test_gallery_synchronizes_multiple_animated_screen_images(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            screen_path = Path(temp_dir) / "screen.xml"
+            first_gif = Path(temp_dir) / "first.gif"
+            second_gif = Path(temp_dir) / "second.gif"
+            output_dir = Path(temp_dir) / "gallery"
+            make_test_gif(first_gif)
+            make_test_gif(second_gif)
+            xml = make_screen(
+                '<lv_image src="first.gif" x="4" y="4" width="8" height="1" />'
+                '<lv_image src="second.gif" x="24" y="4" width="8" height="1" />'
+            )
+            screen_path.write_text(xml)
+
+            output_path = render_animated_screen_gif(
+                preview_xml_text(xml, FIELDS, {}, "central"),
+                screen_path,
+                output_dir,
+                "composed",
+                speed=2,
+            )
+
+            self.assertIsNotNone(output_path)
+            with Image.open(output_path) as animation:
+                self.assertEqual(animation.n_frames, 2)
+                self.assertLessEqual(animation.info["duration"], 60)
+
+    def test_designer_status_values_validate_and_update_by_role(self):
+        preview_server = SimpleNamespace(
+            state_lock=threading.RLock(),
+            fields=FIELDS,
+            preview_config={
+                "bindings": [
+                    {"id": "battery.central.percent", "type": "percent", "roles": ["central", "peripheral"]},
+                    {"id": "output.selected", "type": "enum", "values": ["usb", "ble", "none"], "roles": ["central"]},
+                ],
+                "values": {"central": {"battery.central.percent": 20, "output.selected": "usb"}, "peripheral": {"battery.central.percent": 40}},
+            },
+        )
+
+        ArtworkEditorHandler._apply_status_values(
+            preview_server,
+            {"central": {"battery.central.percent": 75, "output.selected": "ble"}},
+        )
+
+        self.assertEqual(preview_server.preview_config["values"]["central"]["battery.central.percent"], 75)
+        self.assertEqual(preview_server.preview_config["values"]["central"]["output.selected"], "ble")
+        self.assertEqual(preview_server.preview_config["values"]["peripheral"]["battery.central.percent"], 40)
+        ArtworkEditorHandler._apply_status_values(
+            preview_server,
+            {"peripheral": {"output.selected": "none"}},
+        )
+        self.assertEqual(preview_server.preview_config["values"]["peripheral"]["output.selected"], "none")
+        with self.assertRaisesRegex(ValueError, "unavailable"):
+            ArtworkEditorHandler._apply_status_values(
+                preview_server,
+                {"peripheral": {"usb.powered": True}},
+            )
+
+    def test_designer_status_includes_connection_and_battery_state_without_screen_binding(self):
+        preview_server = SimpleNamespace(
+            state_lock=threading.RLock(),
+            fields=FIELDS,
+            preview_config={
+                "bindings": [],
+                "values": {"central": {}, "peripheral": {}},
+            },
+        )
+
+        status = design_status(preview_server)
+        output_field = next(
+            field for field in status["bindings"] if field["id"] == "output.selected"
+        )
+
+        self.assertEqual(output_field["values"], ["usb", "ble", "none"])
+        self.assertEqual(output_field["roles"], ["central", "peripheral"])
+        self.assertEqual(status["values"]["central"]["output.selected"], "usb")
+        self.assertEqual(status["values"]["peripheral"]["output.selected"], "ble")
+        fields = {field["id"]: field for field in status["bindings"]}
+        for field_id in (
+            "battery.left.charge",
+            "battery.left.percent",
+            "battery.right.charge",
+            "battery.right.percent",
+            "layer.index",
+            "layer.name",
+            "ble.active_profile",
+        ):
+            self.assertIn(field_id, fields)
+        self.assertEqual(fields["layer.index"]["roles"], ["central", "peripheral"])
+        self.assertEqual(fields["layer.name"]["roles"], ["central"])
+        self.assertEqual(fields["ble.active_profile"]["roles"], ["central", "peripheral"])
+        self.assertEqual(fields["ble.active_profile"]["minimum"], -1)
+        self.assertEqual(fields["ble.active_profile"]["maximum"], 7)
+        self.assertEqual(status["values"]["central"]["layer.name"], "BASE")
+        self.assertNotIn("layer.name", status["values"]["peripheral"])
+        self.assertEqual(status["values"]["central"]["ble.active_profile"], 0)
+        self.assertEqual(status["values"]["peripheral"]["ble.active_profile"], 3)
+        self.assertEqual(status["values"]["central"]["battery.left.charge"], "charging")
+        self.assertEqual(status["values"]["peripheral"]["battery.right.charge"], "discharging")
+        self.assertEqual(status["values"]["central"]["battery.left.percent"], 87)
+        self.assertEqual(status["values"]["peripheral"]["battery.right.percent"], 64)
+
+    def test_svg_artwork_dimensions_use_vector_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "artwork.svg"
+            path.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37.5 19"/>')
+
+            self.assertEqual(image_dimensions(path), (38, 19, 1))
+
+    def test_lucide_import_sanitizes_and_registers_svg_icons(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            svg = BytesIO(
+                b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+                b'stroke="currentColor"><path d="M2 2h20" /></svg>'
+            )
+            with patch(
+                "tools.artwork_editor.urllib.request.urlopen", return_value=svg
+            ):
+                icon = import_lucide_icon("usb-test", root)
+
+            self.assertEqual(icon["src"], "../assets/lucide/usb-test.svg")
+            self.assertIn(
+                'stroke="#000000"',
+                (root / "docs" / "ui" / "assets" / "lucide" / "usb-test.svg").read_text(),
+            )
+            self.assertEqual(available_lucide_icons(root), [icon])
+            with self.assertRaisesRegex(ValueError, "icon name"):
+                import_lucide_icon("../usb", root)
+
+            unsafe_svg = BytesIO(
+                b'<svg xmlns="http://www.w3.org/2000/svg"><script /></svg>'
+            )
+            with patch(
+                "tools.artwork_editor.urllib.request.urlopen",
+                return_value=unsafe_svg,
+            ):
+                with self.assertRaisesRegex(ValueError, "unsupported elements"):
+                    import_lucide_icon("unsafe", root)
+
     def test_preview_keeps_file_backed_images_below_lvgl_widgets(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             screen_path = Path(temp_dir) / "screen.xml"
@@ -436,6 +585,73 @@ class NiceViewXmlValidationTests(unittest.TestCase):
         self.assertEqual(label.get("height"), "13")
         self.assertEqual(label.get("style_text_align"), "right")
         self.assertEqual(label.get("style_text_font"), "lv_montserrat_12")
+
+    def test_preview_status_text_centers_inside_explicit_widget_bounds(self):
+        xml = make_screen(
+            '<zmk_status_text field="output.selected" format="output-label" '
+            'x="12" y="7" width="36" height="20" font_size="10" '
+            'anchor="middle" />'
+        )
+
+        normalized = ET.fromstring(
+            preview_xml_text(xml, FIELDS, {"output.selected": "ble"}, "central")
+        )
+        label = normalized.find(".//lv_label")
+
+        self.assertIsNotNone(label)
+        self.assertEqual(label.get("x"), "12")
+        self.assertEqual(label.get("y"), "10")
+        self.assertEqual(label.get("width"), "36")
+        self.assertEqual(label.get("height"), "20")
+        self.assertEqual(label.get("style_text_align"), "center")
+
+    def test_codegen_preserves_explicit_status_text_widget_bounds(self):
+        xml = make_screen(
+            '<zmk_status_text field="output.selected" format="output-label" '
+            'x="12" y="7" width="36" height="20" font_size="10" '
+            'anchor="middle" />'
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            screen_path = Path(temp_dir) / "screen.xml"
+            screen_path.write_text(xml)
+            _, source_path = write_generated(
+                screen_path, Path(temp_dir) / "generated", xml
+            )
+            generated_source = source_path.read_text()
+
+        self.assertIn(
+            '"output.selected", ZMK_NVP_SVG_RENDER_TEXT, 3, 255, 12, 7, 36, 20',
+            generated_source,
+        )
+
+    def test_preview_renders_ble_centered_inside_widget_bounds(self):
+        xml = make_screen(
+            '<zmk_status_text field="output.selected" format="output-label" '
+            'x="10" y="4" width="24" height="14" font_size="10" '
+            'anchor="middle" />'
+        )
+        normalized = preview_xml_text(
+            xml, FIELDS, {"output.selected": "ble"}, "central"
+        )
+        label = ET.fromstring(normalized).find(".//lv_label")
+        self.assertIsNotNone(label)
+        self.assertEqual(label.get("text"), "BLE")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "preview.png"
+            preview_png(normalized, output_path)
+            rendered = Image.open(output_path).convert("L")
+            dark_pixels = [
+                (x, y)
+                for y in range(4, 18)
+                for x in range(10, 34)
+                if rendered.getpixel((x, y)) < 128
+            ]
+
+        self.assertTrue(dark_pixels)
+        text_center = (min(x for x, _ in dark_pixels) + max(x for x, _ in dark_pixels)) / 2
+        self.assertAlmostEqual(text_center, 22, delta=2)
 
     def test_static_label_font_size_is_shared_by_preview_and_codegen(self):
         xml = make_screen('<lv_label text="LINK" x="4" y="4" font_size="8" />')
@@ -744,8 +960,43 @@ class NiceViewXmlValidationTests(unittest.TestCase):
         modules = load_visual_modules()
         self.assertEqual(
             {module["style"] for module in modules.values() if module["family"] != "Background"},
-            {"Signal", "Grid"},
+            {
+                "Signal",
+                "Grid",
+                "Left",
+                "Right",
+                "Icon",
+                "Charging",
+                "Percentage",
+                "Name",
+                "Index",
+                "Number",
+                "State",
+                "Link",
+                "Lucide",
+                "Text",
+            },
         )
+        self.assertNotIn("battery-signal", modules)
+        self.assertNotIn("battery-grid", modules)
+        self.assertNotIn("layer-signal", modules)
+        self.assertNotIn("layer-grid", modules)
+        self.assertNotIn("profile-signal", modules)
+        self.assertNotIn("profile-grid", modules)
+        self.assertIn("connection-central-to-peripheral", modules)
+        self.assertIn("connection-peripheral-to-central", modules)
+        self.assertIn(
+            {"name": "No icon", "src": "../assets/no-icon.svg"},
+            available_lucide_icons(),
+        )
+        self.assertEqual(
+            modules["battery-charging"]["defaults"]["idle_icon_src"],
+            "../assets/no-icon.svg",
+        )
+        self.assertNotIn("layer-signal", modules)
+        self.assertNotIn("layer-grid", modules)
+        self.assertNotIn("profile-signal", modules)
+        self.assertNotIn("profile-grid", modules)
         with tempfile.TemporaryDirectory(
             dir=Path(__file__).parent / "docs" / "ui"
         ) as temp_dir:
@@ -767,13 +1018,52 @@ class NiceViewXmlValidationTests(unittest.TestCase):
                 "widgets": [
                     {
                         "id": "battery-a",
-                        "module": "battery-signal",
+                        "module": "battery-icon",
                         "x": 12,
                         "y": 8,
                         "width": 56,
                         "height": 10,
                         "properties": {"side": "right"},
-                    }
+                    },
+                    {
+                        "id": "battery-percent-a",
+                        "module": "battery-percentage",
+                        "x": 72,
+                        "y": 8,
+                        "width": 32,
+                        "height": 14,
+                        "properties": {"side": "right"},
+                    },
+                    {
+                        "id": "connection-icon-a",
+                        "module": "connection-icon",
+                        "x": 4,
+                        "y": 35,
+                        "width": 20,
+                        "height": 20,
+                        "properties": {
+                            "usb_icon_src": "../assets/lucide/bluetooth.svg",
+                            "ble_icon_src": "../assets/lucide/usb.svg",
+                            "none_icon_src": "../assets/lucide/unplug.svg",
+                        },
+                    },
+                    {
+                        "id": "connection-text-a",
+                        "module": "connection-label",
+                        "x": 28,
+                        "y": 38,
+                        "width": 24,
+                        "height": 14,
+                    },
+                    {
+                        "id": "lucide-icon-a",
+                        "module": "lucide-icon",
+                        "x": 58,
+                        "y": 35,
+                        "width": 20,
+                        "height": 20,
+                        "properties": {"icon_src": "../assets/lucide/bluetooth.svg"},
+                    },
                 ],
             }
             screen_path = root / "designer" / "nice-view-left.xml"
@@ -786,10 +1076,23 @@ class NiceViewXmlValidationTests(unittest.TestCase):
                 root / "assets",
             )
 
+            self.assertNotIn('label="R"', screen_path.read_text())
             self.assertEqual(validate_screen(screen_path), [])
             expanded = ET.fromstring(expand_screen_file(screen_path))
+            connection_icons = {
+                status.get("value"): status.find("lv_image").get("src")
+                for status in expanded.iter("zmk_status_when")
+                if status.get("field") == "output.selected"
+            }
+            self.assertEqual(
+                {mode: Path(source).name for mode, source in connection_icons.items()},
+                {"usb": "bluetooth.svg", "ble": "usb.svg", "none": "unplug.svg"},
+            )
+            svg_images = list(expanded.iter("lv_image"))
+            self.assertTrue(all((screen_path.parent / image.get("src")).resolve().is_file() for image in svg_images))
+            self.assertEqual(len(list(expanded.iter("zmk_status_text"))), 2)
             background = expanded.find(".//lv_image")
-            generated = root / "assets" / "background-nice-view-left.png"
+            generated = root / "assets" / "image-nice-view-left-background.png"
             with Image.open(generated) as fitted:
                 self.assertEqual(fitted.size, (160, 68))
             loaded = load_design_screen(screen_path)
@@ -799,10 +1102,85 @@ class NiceViewXmlValidationTests(unittest.TestCase):
 
         self.assertIsNotNone(background)
         self.assertEqual(background.get("dither"), "bayer")
-        self.assertEqual(loaded["background"]["image"], "sample.png")
-        self.assertEqual(loaded["background"]["focal_x"], 1.0)
-        self.assertEqual(loaded["widgets"][0]["properties"]["side"], "right")
+        self.assertEqual(loaded["items"][0]["kind"], "image")
+        self.assertEqual(loaded["items"][0]["properties"]["image"], "sample.png")
+        self.assertEqual(loaded["items"][0]["properties"]["focal_x"], 1.0)
+        loaded_by_id = {item["id"]: item for item in loaded["items"]}
+        self.assertEqual(loaded_by_id["battery-a"]["properties"]["side"], "right")
+        self.assertEqual(
+            loaded_by_id["connection-icon-a"]["properties"]["none_icon_src"],
+            "../assets/lucide/unplug.svg",
+        )
+        self.assertEqual(
+            loaded_by_id["lucide-icon-a"]["properties"]["icon_src"],
+            "../assets/lucide/bluetooth.svg",
+        )
         self.assertIn("zmk_nvp_svg_background_data", generated_source)
+
+    def test_screen_designer_composes_multiple_independent_image_items(self):
+        with tempfile.TemporaryDirectory(
+            dir=Path(__file__).parent / "docs" / "ui"
+        ) as temp_dir:
+            root = Path(temp_dir)
+            input_dir = root / "artwork"
+            input_dir.mkdir()
+            Image.new("RGBA", (24, 16), "black").save(input_dir / "tile.png")
+            items = []
+            for item_id, x, y, width, height, dither in (
+                ("image-one", 5, 4, 72, 36, "bayer"),
+                ("image-two", 80, 20, 60, 30, "atkinson"),
+            ):
+                items.append(
+                    {
+                        "id": item_id,
+                        "kind": "image",
+                        "x": x,
+                        "y": y,
+                        "width": width,
+                        "height": height,
+                        "properties": {
+                            "image": "tile.png",
+                            "fit": "cover",
+                            "focal_x": 0.5,
+                            "focal_y": 0.5,
+                            "rotation": 0,
+                            "dither": dither,
+                        },
+                    }
+                )
+            screen_path = root / "designer" / "nice-view-left.xml"
+            write_design_screen(
+                "nice-view",
+                "left",
+                {"items": items},
+                screen_path,
+                input_dir,
+                root / "assets",
+            )
+
+            self.assertEqual(validate_screen(screen_path), [])
+            expanded = ET.fromstring(expand_screen_file(screen_path))
+            rendered_images = expanded.findall(".//lv_image")
+            loaded = load_design_screen(screen_path)
+
+        self.assertEqual(len(rendered_images), 2)
+        self.assertEqual(
+            [image.get("dither") for image in rendered_images],
+            ["bayer", "atkinson"],
+        )
+        self.assertEqual(
+            [
+                {name: image.get(name) for name in ("x", "y", "width", "height")}
+                for image in rendered_images
+            ],
+            [
+                {"x": "5", "y": "4", "width": "72", "height": "36"},
+                {"x": "80", "y": "20", "width": "60", "height": "30"},
+            ],
+        )
+        self.assertEqual(
+            [item["id"] for item in loaded["items"]], ["image-one", "image-two"]
+        )
 
     def test_imported_signal_and_grid_widgets_expand_validate_and_generate(self):
         widget_dir = Path(__file__).parent / "docs" / "ui" / "widgets"
@@ -874,6 +1252,176 @@ class NiceViewXmlValidationTests(unittest.TestCase):
                     any(path.suffix == ".svg" for path in dependencies)
                 )
 
+    def test_split_battery_widgets_expand_validate_and_generate(self):
+        widget_dir = Path(__file__).parent / "docs" / "ui" / "widgets"
+        widgets = {
+            "battery-left-indicator.xml": {},
+            "battery-right-indicator.xml": {},
+            "battery-icon.xml": {
+                "side": "left",
+                "label": "L",
+                "fill_x": "4",
+                "fill_y": "5",
+                "fill_width": "14",
+                "fill_height": "6",
+                "icon_x": "0",
+                "icon_y": "0",
+                "icon_src": "../assets/battery-signal.svg",
+            },
+            "battery-charging.xml": {
+                "side": "right",
+                "label": "R",
+                "charge_x": "0",
+                "charge_y": "0",
+                "charging_icon_src": "../assets/bolt-widget.svg",
+                "idle_icon_src": "../assets/no-icon.svg",
+            },
+            "battery-percentage.xml": {
+                "side": "right",
+                "label": "R",
+                "value_x": "0",
+                "value_y": "0",
+                "font_size": "10",
+            },
+        }
+
+        for widget_name, parameters in widgets.items():
+            with self.subTest(widget=widget_name), tempfile.TemporaryDirectory() as temp_dir:
+                screen_path = Path(temp_dir) / "screen.xml"
+                component = ET.Element("component")
+                view = ET.SubElement(
+                    component, "view", {"width": "160", "height": "68"}
+                )
+                ET.SubElement(
+                    view,
+                    "zmk_include",
+                    {"src": str(widget_dir / widget_name), **parameters},
+                )
+                screen_path.write_text(ET.tostring(component, encoding="unicode"))
+
+                dependencies: set[Path] = set()
+                expanded = expand_screen_file(screen_path, dependencies)
+                self.assertNotIn("zmk_include", expanded)
+                self.assertEqual(validate_screen(screen_path), [])
+                _, source_path = write_generated(
+                    screen_path, Path(temp_dir) / "generated", expanded
+                )
+                generated_source = source_path.read_text()
+
+                self.assertIn((widget_dir / widget_name).resolve(), dependencies)
+                if widget_name == "battery-icon.xml":
+                    self.assertIn('"battery.left.percent"', generated_source)
+                    self.assertIn((widget_dir.parent / "assets" / "battery-signal.svg").resolve(), dependencies)
+                elif widget_name == "battery-charging.xml":
+                    self.assertIn('"battery.right.charge"', generated_source)
+                    self.assertIn((widget_dir.parent / "assets" / "bolt-widget.svg").resolve(), dependencies)
+                    self.assertIn((widget_dir.parent / "assets" / "no-icon.svg").resolve(), dependencies)
+                    self.assertEqual(len(ET.fromstring(expanded).findall(".//lv_image")), 2)
+                elif widget_name == "battery-percentage.xml":
+                    self.assertIn('"battery.right.percent"', generated_source)
+
+    def test_split_layer_and_profile_widgets_expand_validate_and_generate(self):
+        widget_dir = Path(__file__).parent / "docs" / "ui" / "widgets"
+        widgets = {
+            "layer-icon.xml": {
+                "icon_x": "0",
+                "icon_y": "0",
+                "icon_src": "../assets/layer-signal.svg",
+            },
+            "layer-name.xml": {"name_x": "0", "name_y": "0", "font_size": "10"},
+            "layer-index.xml": {"index_x": "0", "index_y": "0", "font_size": "10"},
+            "profile-icon.xml": {
+                "icon_x": "0",
+                "icon_y": "0",
+                "icon_src": "../assets/profile-signal.svg",
+            },
+            "profile-number.xml": {"number_x": "0", "number_y": "0", "font_size": "10"},
+            "profile-state.xml": {"state_x": "0", "state_y": "0"},
+        }
+
+        for widget_name, parameters in widgets.items():
+            with self.subTest(widget=widget_name), tempfile.TemporaryDirectory() as temp_dir:
+                screen_path = Path(temp_dir) / "screen.xml"
+                component = ET.Element("component")
+                view = ET.SubElement(
+                    component, "view", {"width": "160", "height": "68"}
+                )
+                ET.SubElement(
+                    view,
+                    "zmk_include",
+                    {"src": str(widget_dir / widget_name), **parameters},
+                )
+                screen_path.write_text(ET.tostring(component, encoding="unicode"))
+
+                dependencies: set[Path] = set()
+                expanded = expand_screen_file(screen_path, dependencies)
+                self.assertNotIn("zmk_include", expanded)
+                self.assertEqual(validate_screen(screen_path), [])
+                _, source_path = write_generated(
+                    screen_path, Path(temp_dir) / "generated", expanded
+                )
+                generated_source = source_path.read_text()
+                if widget_name == "layer-icon.xml":
+                    self.assertIn(
+                        (widget_dir.parent / "assets" / "layer-signal.svg").resolve(),
+                        dependencies,
+                    )
+                elif widget_name == "profile-icon.xml":
+                    self.assertIn(
+                        (widget_dir.parent / "assets" / "profile-signal.svg").resolve(),
+                        dependencies,
+                    )
+                    self.assertIn('"ble.active_profile"', generated_source)
+                elif widget_name == "layer-name.xml":
+                    self.assertIn('"layer.name"', generated_source)
+                elif widget_name == "layer-index.xml":
+                    self.assertIn('"layer.index"', generated_source)
+                else:
+                    self.assertIn('"ble.active_profile"', generated_source)
+
+    def test_split_connection_icon_widgets_are_role_specific_and_expand(self):
+        widget_path = Path(__file__).parent / "docs" / "ui" / "widgets" / "split-link-icon.xml"
+        icon_dir = Path(__file__).parent / "docs" / "ui" / "assets" / "lucide"
+        for role in ("central", "peripheral"):
+            with self.subTest(role=role), tempfile.TemporaryDirectory() as temp_dir:
+                screen_path = Path(temp_dir) / "screen.xml"
+                component = ET.Element("component")
+                view = ET.SubElement(component, "view", {"width": "160", "height": "68"})
+                ET.SubElement(
+                    view,
+                    "zmk_include",
+                    {
+                        "src": str(widget_path),
+                        "role": role,
+                        "connected_icon_src": "../assets/lucide/bluetooth.svg",
+                        "disconnected_icon_src": "../assets/lucide/bluetooth-off.svg",
+                        "icon_x": "0",
+                        "icon_y": "0",
+                    },
+                )
+                screen_path.write_text(ET.tostring(component, encoding="unicode"))
+
+                dependencies: set[Path] = set()
+                expanded = expand_screen_file(screen_path, dependencies)
+                self.assertEqual(validate_screen(screen_path), [])
+                self.assertIn(icon_dir / "bluetooth.svg", dependencies)
+                self.assertIn(icon_dir / "bluetooth-off.svg", dependencies)
+                _, source_path = write_generated(
+                    screen_path, Path(temp_dir) / "generated", expanded
+                )
+                generated_source = source_path.read_text()
+                self.assertIn('"split.connected"', generated_source)
+                role_mask = 1 if role == "central" else 2
+                self.assertIn(
+                    f'"split.connected", ZMK_NVP_SVG_RENDER_VISIBLE, {role_mask},',
+                    generated_source,
+                )
+                parsed = ET.fromstring(expanded)
+                self.assertEqual(
+                    {element.get("role") for element in parsed.iter("zmk_status_when")},
+                    {role},
+                )
+
     def test_modular_samples_expand_validate_and_generate(self):
         samples = Path(__file__).parent / "docs" / "ui" / "samples"
         for path in sorted(samples.glob("*.xml")):
@@ -905,6 +1453,40 @@ class NiceViewXmlValidationTests(unittest.TestCase):
                     xml, FIELDS, {"split.connected": value}, "central"
                 )
                 self.assertIn(f'text="{expected}"', rendered)
+
+    def test_preview_keeps_only_matching_connection_icon_and_text(self):
+        xml = make_screen(
+            '<zmk_status_when field="output.selected" test="equals" value="usb">'
+            '<lv_image src="../assets/lucide/usb.svg" x="2" y="2" width="20" height="20" />'
+            '</zmk_status_when>'
+            '<zmk_status_when field="output.selected" test="equals" value="ble">'
+            '<lv_image src="../assets/lucide/bluetooth.svg" x="2" y="2" width="20" height="20" />'
+            '</zmk_status_when>'
+            '<zmk_status_when field="output.selected" test="equals" value="none">'
+            '<lv_image src="../assets/lucide/unplug.svg" x="2" y="2" width="20" height="20" />'
+            '</zmk_status_when>'
+            '<zmk_status_text field="output.selected" format="output-label" '
+            'x="2" y="2" width="24" height="14" font_size="10" '
+            'anchor="middle" />'
+        )
+
+        expected = {
+            "usb": ("../assets/lucide/usb.svg", "USB"),
+            "ble": ("../assets/lucide/bluetooth.svg", "BLE"),
+            "none": ("../assets/lucide/unplug.svg", "--"),
+        }
+        for mode, (icon_src, label_text) in expected.items():
+            with self.subTest(mode=mode):
+                rendered = ET.fromstring(
+                    preview_xml_text(xml, FIELDS, {"output.selected": mode}, "central")
+                )
+                images = list(rendered.iter("lv_image"))
+                label = rendered.find(".//lv_label")
+
+                self.assertEqual(len(images), 1)
+                self.assertEqual(images[0].get("src"), icon_src)
+                self.assertIsNotNone(label)
+                self.assertEqual(label.get("text"), label_text)
 
     def test_paired_preview_merges_screen_bindings_and_dimensions(self):
         screens = Path(__file__).parent / "docs" / "ui" / "screens"

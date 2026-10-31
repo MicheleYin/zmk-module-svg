@@ -1,0 +1,8 @@
+<fragment>
+  <zmk_status_when field="ble.active_profile" test="not_equals" value="-1">
+    <lv_label text="ACTIVE" x="{{state_x}}" y="{{state_y}}" font_size="8" font_family="monospace" />
+  </zmk_status_when>
+  <zmk_status_when field="ble.active_profile" test="equals" value="-1">
+    <lv_label text="NONE" x="{{state_x}}" y="{{state_y}}" font_size="8" font_family="monospace" />
+  </zmk_status_when>
+</fragment>

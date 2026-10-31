@@ -1,0 +1,3 @@
+<fragment>
+  <zmk_status_text field="battery.{{side}}.percent" format="percent" x="{{value_x}}" y="{{value_y}}" width="32" height="14" font_size="{{font_size}}" anchor="middle" />
+</fragment>

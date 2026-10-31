@@ -1,0 +1,5 @@
+<fragment>
+  <zmk_status_when field="ble.active_profile" test="not_equals" value="-1">
+    <lv_image src="{{icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="24" height="20" />
+  </zmk_status_when>
+</fragment>

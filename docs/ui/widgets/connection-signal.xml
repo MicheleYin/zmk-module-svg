@@ -1,6 +1,6 @@
 <fragment>
-  <zmk_status_when field="output.selected" test="equals" value="usb"><lv_image src="../assets/connection-usb-signal.svg" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
-  <zmk_status_when field="output.selected" test="equals" value="ble"><lv_image src="../assets/connection-ble-signal.svg" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
-  <zmk_status_when field="output.selected" test="equals" value="none"><lv_image src="../assets/connection-none-signal.svg" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
+  <zmk_status_when field="output.selected" test="equals" value="usb"><lv_image src="../assets/lucide/usb.svg" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
+  <zmk_status_when field="output.selected" test="equals" value="ble"><lv_image src="../assets/lucide/bluetooth.svg" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
+  <zmk_status_when field="output.selected" test="equals" value="none"><lv_image src="../assets/lucide/unplug.svg" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
   <zmk_status_text field="output.selected" format="output-label" x="{{value_x}}" y="{{value_y}}" font_size="10" />
 </fragment>

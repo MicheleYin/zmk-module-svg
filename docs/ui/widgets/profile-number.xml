@@ -1,0 +1,3 @@
+<fragment>
+  <zmk_status_text field="ble.active_profile" format="profile-number" x="{{number_x}}" y="{{number_y}}" width="20" height="14" font_size="{{font_size}}" anchor="middle" />
+</fragment>

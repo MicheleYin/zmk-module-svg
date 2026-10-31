@@ -1,0 +1,4 @@
+<fragment>
+  <zmk_status_bar field="battery.{{side}}.percent" x="{{fill_x}}" y="{{fill_y}}" width="{{fill_width}}" height="{{fill_height}}" />
+  <lv_image src="{{icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="24" height="16" />
+</fragment>

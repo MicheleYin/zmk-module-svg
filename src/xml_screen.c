@@ -394,16 +394,28 @@ static const lv_font_t *binding_font(const struct zmk_nvp_svg_binding *binding) 
 
 static void place_text(lv_obj_t *label, const struct zmk_nvp_svg_binding *binding) {
     lv_coord_t x = binding->x;
+    lv_coord_t y = binding->y - binding->font_size;
+    lv_coord_t width = ZMK_NVP_SVG_WIDTH;
+    lv_coord_t height = MAX(binding->font_size + 2, 10);
     lv_text_align_t align = LV_TEXT_ALIGN_LEFT;
-    if (strcmp(binding->anchor, "middle") == 0) {
+    if (binding->width > 0) {
+        width = binding->width;
+        height = binding->height > 0 ? binding->height : height;
+        y = binding->y + MAX((height - lv_font_get_line_height(binding_font(binding))) / 2, 0);
+        if (strcmp(binding->anchor, "middle") == 0) {
+            align = LV_TEXT_ALIGN_CENTER;
+        } else if (strcmp(binding->anchor, "end") == 0) {
+            align = LV_TEXT_ALIGN_RIGHT;
+        }
+    } else if (strcmp(binding->anchor, "middle") == 0) {
         x -= ZMK_NVP_SVG_WIDTH / 2;
         align = LV_TEXT_ALIGN_CENTER;
     } else if (strcmp(binding->anchor, "end") == 0) {
         x -= ZMK_NVP_SVG_WIDTH;
         align = LV_TEXT_ALIGN_RIGHT;
     }
-    lv_obj_set_pos(label, x, binding->y - binding->font_size);
-    lv_obj_set_size(label, ZMK_NVP_SVG_WIDTH, MAX(binding->font_size + 2, 10));
+    lv_obj_set_pos(label, x, y);
+    lv_obj_set_size(label, width, height);
     lv_obj_set_style_text_align(label, align, LV_PART_MAIN);
 }
 

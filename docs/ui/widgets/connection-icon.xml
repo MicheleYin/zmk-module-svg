@@ -1,0 +1,5 @@
+<fragment>
+  <zmk_status_when field="output.selected" test="equals" value="usb"><lv_image src="{{usb_icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
+  <zmk_status_when field="output.selected" test="equals" value="ble"><lv_image src="{{ble_icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
+  <zmk_status_when field="output.selected" test="equals" value="none"><lv_image src="{{none_icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" /></zmk_status_when>
+</fragment>

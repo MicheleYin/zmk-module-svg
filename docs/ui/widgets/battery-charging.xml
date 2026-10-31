@@ -1,0 +1,8 @@
+<fragment>
+  <zmk_status_when field="battery.{{side}}.charge" test="equals" value="charging">
+    <lv_image src="{{charging_icon_src}}" x="{{charge_x}}" y="{{charge_y}}" width="8" height="10" />
+  </zmk_status_when>
+  <zmk_status_when field="battery.{{side}}.charge" test="not_equals" value="charging">
+    <lv_image src="{{idle_icon_src}}" x="{{charge_x}}" y="{{charge_y}}" width="8" height="10" />
+  </zmk_status_when>
+</fragment>

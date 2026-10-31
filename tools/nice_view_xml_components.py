@@ -162,6 +162,14 @@ def _expand_include(
         and name not in EDITOR_ATTRIBUTES
         and not name.startswith("editor_")
     }
+    template_parameters = {
+        parameter
+        for element in fragment.iter()
+        for value in (*element.attrib.values(), element.text or "")
+        for parameter in PARAMETER.findall(value)
+    }
+    if "label" not in template_parameters:
+        parameters.pop("label", None)
     _substitute(fragment, parameters, widget_path)
     _transform_editor_instance(fragment, include, widget_path)
     _rebase_images(fragment, widget_path, screen_dir, dependencies)

@@ -1,0 +1,3 @@
+<fragment>
+  <zmk_status_text field="layer.index" x="{{index_x}}" y="{{index_y}}" width="20" height="14" font_size="{{font_size}}" anchor="middle" />
+</fragment>

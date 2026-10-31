@@ -1,0 +1,3 @@
+<fragment>
+  <zmk_status_text field="output.selected" format="output-label" x="{{value_x}}" y="{{value_y}}" width="24" height="14" font_size="{{font_size}}" anchor="middle" />
+</fragment>

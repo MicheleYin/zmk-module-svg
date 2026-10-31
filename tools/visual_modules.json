@@ -12,23 +12,53 @@
       "controls": ["image_src", "dither"]
     },
     {
-      "id": "battery-signal",
-      "label": "Battery · Signal",
+      "id": "battery-left-indicator",
+      "label": "Battery · Left indicator",
       "family": "Battery",
-      "style": "Signal",
-      "source": "docs/ui/widgets/battery-signal.xml",
-      "bounds": {"x": 0, "y": 0, "width": 112, "height": 20},
-      "defaults": {"side": "left", "label": "L", "label_x": 0, "label_y": 5, "icon_x": 14, "icon_y": 2, "bar_x": 43, "bar_y": 8, "bar_width": 34, "value_x": 82, "value_y": 4, "charge_x": 102, "charge_y": 2},
+      "style": "Left",
+      "source": "docs/ui/widgets/battery-left-indicator.xml",
+      "bounds": {"x": 0, "y": 0, "width": 8, "height": 10},
+      "defaults": {},
       "controls": ["side"]
     },
     {
-      "id": "battery-grid",
-      "label": "Battery · Grid",
+      "id": "battery-right-indicator",
+      "label": "Battery · Right indicator",
       "family": "Battery",
-      "style": "Grid",
-      "source": "docs/ui/widgets/battery-grid.xml",
-      "bounds": {"x": 0, "y": 0, "width": 112, "height": 20},
-      "defaults": {"side": "left", "label": "L", "label_x": 0, "label_y": 5, "icon_x": 14, "icon_y": 2, "bar_x": 43, "bar_y": 8, "bar_width": 34, "value_x": 82, "value_y": 4, "charge_x": 102, "charge_y": 2},
+      "style": "Right",
+      "source": "docs/ui/widgets/battery-right-indicator.xml",
+      "bounds": {"x": 0, "y": 0, "width": 8, "height": 10},
+      "defaults": {},
+      "controls": []
+    },
+    {
+      "id": "battery-icon",
+      "label": "Battery · Icon",
+      "family": "Battery",
+      "style": "Icon",
+      "source": "docs/ui/widgets/battery-icon.xml",
+      "bounds": {"x": 0, "y": 0, "width": 24, "height": 16},
+      "defaults": {"side": "left", "fill_x": 4, "fill_y": 5, "fill_width": 14, "fill_height": 6, "icon_x": 0, "icon_y": 0, "icon_src": "../assets/battery-signal.svg"},
+      "controls": ["side", "icon_src"]
+    },
+    {
+      "id": "battery-charging",
+      "label": "Battery · Charging indicator",
+      "family": "Battery",
+      "style": "Charging",
+      "source": "docs/ui/widgets/battery-charging.xml",
+      "bounds": {"x": 0, "y": 0, "width": 8, "height": 10},
+      "defaults": {"side": "left", "charge_x": 0, "charge_y": 0, "charging_icon_src": "../assets/bolt-widget.svg", "idle_icon_src": "../assets/no-icon.svg"},
+      "controls": ["side", "charging_icon_src", "idle_icon_src"]
+    },
+    {
+      "id": "battery-percentage",
+      "label": "Battery · Charge percentage",
+      "family": "Battery",
+      "style": "Percentage",
+      "source": "docs/ui/widgets/battery-percentage.xml",
+      "bounds": {"x": 0, "y": 0, "width": 32, "height": 14},
+      "defaults": {"side": "left", "value_x": 0, "value_y": 0, "font_size": 10},
       "controls": ["side"]
     },
     {
@@ -37,8 +67,8 @@
       "family": "Connection",
       "style": "Signal",
       "source": "docs/ui/widgets/connection-signal.xml",
-      "bounds": {"x": 0, "y": 0, "width": 62, "height": 20},
-      "defaults": {"icon_x": 0, "icon_y": 0, "value_x": 24, "value_y": 5},
+      "bounds": {"x": 0, "y": 0, "width": 44, "height": 20},
+      "defaults": {"icon_x": 0, "icon_y": 0, "value_x": 22, "value_y": 5},
       "controls": []
     },
     {
@@ -52,43 +82,113 @@
       "controls": []
     },
     {
-      "id": "layer-signal",
-      "label": "Layer · Signal",
+      "id": "connection-icon",
+      "label": "Connection · Icon",
+      "family": "Connection",
+      "style": "Lucide",
+      "source": "docs/ui/widgets/connection-icon.xml",
+      "bounds": {"x": 0, "y": 0, "width": 20, "height": 20},
+      "defaults": {"usb_icon_src": "../assets/lucide/usb.svg", "ble_icon_src": "../assets/lucide/bluetooth.svg", "none_icon_src": "../assets/lucide/unplug.svg", "icon_x": 0, "icon_y": 0},
+      "controls": ["usb_icon_src", "ble_icon_src", "none_icon_src"]
+    },
+    {
+      "id": "connection-label",
+      "label": "Connection · Text",
+      "family": "Connection",
+      "style": "Text",
+      "source": "docs/ui/widgets/connection-label.xml",
+      "bounds": {"x": 0, "y": 0, "width": 24, "height": 14},
+      "defaults": {"value_x": 0, "value_y": 0, "font_size": 10},
+      "controls": []
+    },
+    {
+      "id": "connection-central-to-peripheral",
+      "label": "Connection · Central to peripheral",
+      "family": "Connection",
+      "style": "Link",
+      "source": "docs/ui/widgets/split-link-icon.xml",
+      "bounds": {"x": 0, "y": 0, "width": 20, "height": 20},
+      "defaults": {"role": "central", "connected_icon_src": "../assets/lucide/bluetooth.svg", "disconnected_icon_src": "../assets/lucide/bluetooth-off.svg", "icon_x": 0, "icon_y": 0},
+      "controls": ["connected_icon_src", "disconnected_icon_src"]
+    },
+    {
+      "id": "connection-peripheral-to-central",
+      "label": "Connection · Peripheral to central",
+      "family": "Connection",
+      "style": "Link",
+      "source": "docs/ui/widgets/split-link-icon.xml",
+      "bounds": {"x": 0, "y": 0, "width": 20, "height": 20},
+      "defaults": {"role": "peripheral", "connected_icon_src": "../assets/lucide/bluetooth.svg", "disconnected_icon_src": "../assets/lucide/bluetooth-off.svg", "icon_x": 0, "icon_y": 0},
+      "controls": ["connected_icon_src", "disconnected_icon_src"]
+    },
+    {
+      "id": "lucide-icon",
+      "label": "Lucide · Icon",
+      "family": "Icons",
+      "style": "Lucide",
+      "source": "docs/ui/widgets/lucide-icon.xml",
+      "bounds": {"x": 0, "y": 0, "width": 20, "height": 20},
+      "defaults": {"icon_src": "../assets/lucide/usb.svg", "icon_x": 0, "icon_y": 0, "icon_width": 20, "icon_height": 20},
+      "controls": ["icon_src"]
+    },
+    {
+      "id": "layer-icon",
+      "label": "Layer · Icon",
       "family": "Layer",
-      "style": "Signal",
-      "source": "docs/ui/widgets/layer-signal.xml",
-      "bounds": {"x": 0, "y": 0, "width": 90, "height": 22},
-      "defaults": {"icon_x": 0, "icon_y": 0, "name_x": 28, "name_y": 6, "index_x": 76, "index_y": 5},
-      "controls": []
+      "style": "Icon",
+      "source": "docs/ui/widgets/layer-icon.xml",
+      "bounds": {"x": 0, "y": 0, "width": 22, "height": 22},
+      "defaults": {"icon_x": 0, "icon_y": 0, "icon_src": "../assets/layer-signal.svg"},
+      "controls": ["icon_src"]
     },
     {
-      "id": "layer-grid",
-      "label": "Layer · Grid",
+      "id": "layer-name",
+      "label": "Layer · Name",
       "family": "Layer",
-      "style": "Grid",
-      "source": "docs/ui/widgets/layer-grid.xml",
-      "bounds": {"x": 0, "y": 0, "width": 90, "height": 22},
-      "defaults": {"icon_x": 0, "icon_y": 0, "index_x": 28, "index_y": 2, "name_x": 50, "name_y": 7},
+      "style": "Name",
+      "source": "docs/ui/widgets/layer-name.xml",
+      "bounds": {"x": 0, "y": 0, "width": 56, "height": 14},
+      "defaults": {"name_x": 0, "name_y": 0, "font_size": 10},
       "controls": []
     },
     {
-      "id": "profile-signal",
-      "label": "Profile · Signal",
-      "family": "Profile",
-      "style": "Signal",
-      "source": "docs/ui/widgets/profile-signal.xml",
-      "bounds": {"x": 0, "y": 0, "width": 56, "height": 22},
-      "defaults": {"icon_x": 0, "icon_y": 0, "number_x": 28, "number_y": 4, "label_x": 28, "label_y": 13, "empty_x": 0, "empty_y": 6},
+      "id": "layer-index",
+      "label": "Layer · Index",
+      "family": "Layer",
+      "style": "Index",
+      "source": "docs/ui/widgets/layer-index.xml",
+      "bounds": {"x": 0, "y": 0, "width": 20, "height": 14},
+      "defaults": {"index_x": 0, "index_y": 0, "font_size": 10},
       "controls": []
     },
     {
-      "id": "profile-grid",
-      "label": "Profile · Grid",
+      "id": "profile-icon",
+      "label": "Profile · Icon",
       "family": "Profile",
-      "style": "Grid",
-      "source": "docs/ui/widgets/profile-grid.xml",
-      "bounds": {"x": 0, "y": 0, "width": 56, "height": 22},
-      "defaults": {"icon_x": 0, "icon_y": 0, "number_x": 28, "number_y": 4, "label_x": 28, "label_y": 13, "empty_x": 0, "empty_y": 6},
+      "style": "Icon",
+      "source": "docs/ui/widgets/profile-icon.xml",
+      "bounds": {"x": 0, "y": 0, "width": 24, "height": 20},
+      "defaults": {"icon_x": 0, "icon_y": 0, "icon_src": "../assets/profile-signal.svg"},
+      "controls": ["icon_src"]
+    },
+    {
+      "id": "profile-number",
+      "label": "Profile · Number",
+      "family": "Profile",
+      "style": "Number",
+      "source": "docs/ui/widgets/profile-number.xml",
+      "bounds": {"x": 0, "y": 0, "width": 20, "height": 14},
+      "defaults": {"number_x": 0, "number_y": 0, "font_size": 10},
+      "controls": []
+    },
+    {
+      "id": "profile-state",
+      "label": "Profile · State",
+      "family": "Profile",
+      "style": "State",
+      "source": "docs/ui/widgets/profile-state.xml",
+      "bounds": {"x": 0, "y": 0, "width": 32, "height": 12},
+      "defaults": {"state_x": 0, "state_y": 0},
       "controls": []
     }
   ]

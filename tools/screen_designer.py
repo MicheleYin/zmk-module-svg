@@ -7,20 +7,22 @@ import math
 import os
 import re
 import xml.etree.ElementTree as ET
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageOps
 
 if __package__:
-    from tools.nice_view_xml_assets import DITHER_ALGORITHMS
+    from tools.nice_view_xml_assets import DITHER_ALGORITHMS, rasterize_svg_file
 else:
-    from nice_view_xml_assets import DITHER_ALGORITHMS
+    from nice_view_xml_assets import DITHER_ALGORITHMS, rasterize_svg_file
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_SIZES = {"nice-view": (160, 68), "oled": (128, 32)}
 HALVES = ("left", "right")
 INSTANCE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+ARTWORK_SUFFIXES = {".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".tif", ".tiff", ".webp"}
 SCREEN_NAMES = {
     ("nice-view", "left"): "nice-view-left.xml",
     ("nice-view", "right"): "nice-view-right.xml",
@@ -50,8 +52,20 @@ def load_visual_modules(root: Path = ROOT) -> dict[str, dict[str, Any]]:
     return modules
 
 
+def available_lucide_icons(root: Path = ROOT) -> list[dict[str, str]]:
+    asset_dir = root / "docs" / "ui" / "assets"
+    return [
+        {
+            "name": "No icon" if path.name == "no-icon.svg" else path.stem,
+            "src": f"../assets/{path.relative_to(asset_dir).as_posix()}",
+        }
+        for path in sorted(asset_dir.rglob("*.svg"))
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", path.stem)
+    ]
+
+
 def empty_screen_design() -> dict[str, Any]:
-    return {"background": None, "widgets": []}
+    return {"items": []}
 
 
 def _number(value: Any, label: str) -> float:
@@ -85,87 +99,141 @@ def validate_screen_design(
     design: dict[str, Any],
     input_dir: Path,
     modules: dict[str, dict[str, Any]] | None = None,
+    root: Path = ROOT,
 ) -> dict[str, Any]:
     if profile not in PROFILE_SIZES:
         raise ValueError(f"unknown display profile: {profile}")
     if side not in HALVES:
         raise ValueError(f"unknown display half: {side}")
-    if not isinstance(design, dict) or not isinstance(design.get("widgets", []), list):
-        raise ValueError("screen design needs a widget list")
+    if not isinstance(design, dict):
+        raise ValueError("screen design must be an object")
 
     modules = modules or load_visual_modules()
     size = PROFILE_SIZES[profile]
-    background = design.get("background")
-    clean_background = None
-    if background is not None:
-        if not isinstance(background, dict):
-            raise ValueError("background settings must be an object")
-        image_name = background.get("image")
-        if not isinstance(image_name, str) or Path(image_name).name != image_name:
-            raise ValueError("choose an image from the artwork library")
-        if not (input_dir / image_name).is_file():
-            raise ValueError(f"background image not found: {image_name}")
-        fit = background.get("fit", "cover")
-        dither = background.get("dither", "none")
-        if fit not in {"cover", "contain"}:
-            raise ValueError("background fit must be cover or contain")
-        if dither not in DITHER_ALGORITHMS:
-            raise ValueError(f"unknown dithering mode: {dither}")
-        rotation = background.get("rotation", 0)
-        if rotation not in {0, 90, 180, 270}:
-            raise ValueError("background rotation must be 0, 90, 180, or 270")
-        clean_background = {
-            "image": image_name,
-            "fit": fit,
-            "focal_x": min(1, max(0, _number(background.get("focal_x", 0.5), "focal x"))),
-            "focal_y": min(1, max(0, _number(background.get("focal_y", 0.5), "focal y"))),
-            "rotation": rotation,
-            "dither": dither,
-        }
-
-    clean_widgets = []
-    seen_ids = set()
-    for index, widget in enumerate(design.get("widgets", [])):
-        if not isinstance(widget, dict):
-            raise ValueError(f"widget {index + 1} must be an object")
-        widget_id = widget.get("id")
-        module_id = widget.get("module")
-        if not isinstance(widget_id, str) or not INSTANCE_ID.fullmatch(widget_id):
-            raise ValueError(f"widget {index + 1} has an invalid instance ID")
-        if widget_id in seen_ids:
-            raise ValueError(f"duplicate widget instance ID: {widget_id}")
-        seen_ids.add(widget_id)
-        module = modules.get(module_id)
-        if module is None or module_id == "background-image":
-            raise ValueError(f"unknown widget module: {module_id}")
-        box = _validate_box(widget, size, f"widget {widget_id}")
-        properties = widget.get("properties", {})
-        if not isinstance(properties, dict):
-            raise ValueError(f"widget {widget_id} properties must be an object")
-        unknown = set(properties) - set(module.get("controls", []))
-        if unknown:
-            raise ValueError(
-                f"widget {widget_id} has unsupported properties: "
-                + ", ".join(sorted(unknown))
+    if "items" in design:
+        items = design["items"]
+        if not isinstance(items, list):
+            raise ValueError("screen design needs an item list")
+    else:
+        items = []
+        background = design.get("background")
+        if background is not None:
+            items.append(
+                {
+                    "id": "background",
+                    "kind": "image",
+                    "x": 0,
+                    "y": 0,
+                    "width": size[0],
+                    "height": size[1],
+                    "properties": background,
+                }
             )
-        clean_properties = {**module["defaults"], **properties}
-        if "side" in module.get("controls", []) and clean_properties["side"] not in {
-            "left",
-            "right",
-        }:
-            raise ValueError(f"widget {widget_id} side must be left or right")
-        if "side" in module.get("controls", []):
-            clean_properties["label"] = clean_properties["side"][0].upper()
-        clean_widgets.append(
+        widgets = design.get("widgets", [])
+        if not isinstance(widgets, list):
+            raise ValueError("screen design needs a widget list")
+        items.extend({"kind": "module", **widget} for widget in widgets)
+
+    clean_items = []
+    seen_ids = set()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"item {index + 1} must be an object")
+        item_id = item.get("id")
+        kind = item.get("kind", "module")
+        module_id = item.get("module")
+        if kind == "image":
+            module_id = "background-image"
+        label = f"item {index + 1}"
+        if isinstance(item_id, str):
+            label = f"item {item_id}"
+        if not isinstance(item_id, str) or not INSTANCE_ID.fullmatch(item_id):
+            raise ValueError(f"{label} has an invalid instance ID")
+        if item_id in seen_ids:
+            raise ValueError(f"duplicate item instance ID: {item_id}")
+        seen_ids.add(item_id)
+        module = modules.get(module_id)
+        if module is None:
+            raise ValueError(f"unknown widget module: {module_id}")
+        box = _validate_box(item, size, label)
+        properties = item.get("properties", {})
+        if not isinstance(properties, dict):
+            raise ValueError(f"{label} properties must be an object")
+
+        if kind == "image":
+            image_name = properties.get("image")
+            if not isinstance(image_name, str) or Path(image_name).name != image_name:
+                raise ValueError("choose an image from the artwork library")
+            if Path(image_name).suffix.lower() not in ARTWORK_SUFFIXES:
+                raise ValueError(f"unsupported image type: {image_name}")
+            if not (input_dir / image_name).is_file():
+                raise ValueError(f"image not found: {image_name}")
+            fit = properties.get("fit", "cover")
+            dither = properties.get("dither", "none")
+            if fit not in {"cover", "contain"}:
+                raise ValueError("image fit must be cover or contain")
+            if dither not in DITHER_ALGORITHMS:
+                raise ValueError(f"unknown dithering mode: {dither}")
+            rotation = properties.get("rotation", 0)
+            if rotation not in {0, 90, 180, 270}:
+                raise ValueError("image rotation must be 0, 90, 180, or 270")
+            clean_properties = {
+                "image": image_name,
+                "fit": fit,
+                "focal_x": min(1, max(0, _number(properties.get("focal_x", 0.5), "focal x"))),
+                "focal_y": min(1, max(0, _number(properties.get("focal_y", 0.5), "focal y"))),
+                "rotation": rotation,
+                "dither": dither,
+            }
+        elif kind == "module":
+            if module_id == "background-image":
+                raise ValueError("image modules must use image items")
+            unknown = set(properties) - set(module.get("controls", []))
+            if unknown:
+                raise ValueError(
+                    f"item {item_id} has unsupported properties: "
+                    + ", ".join(sorted(unknown))
+                )
+            clean_properties = {**module["defaults"], **properties}
+            icon_properties = tuple(
+                property_name
+                for property_name in module.get("controls", [])
+                if property_name == "icon_src" or property_name.endswith("_icon_src")
+            )
+            if icon_properties:
+                available_sources = {
+                    icon["src"] for icon in available_lucide_icons(root)
+                }
+                for property_name in icon_properties:
+                    icon_source = clean_properties.get(property_name)
+                    if not isinstance(icon_source, str) or icon_source not in available_sources:
+                        raise ValueError(
+                            f"item {item_id} needs an imported Lucide icon for {property_name}"
+                        )
+            if "side" in module.get("controls", []) and clean_properties["side"] not in {
+                "left",
+                "right",
+            }:
+                raise ValueError(f"item {item_id} side must be left or right")
+            if (
+                "side" in module.get("controls", [])
+                and "label" in module.get("defaults", {})
+            ):
+                clean_properties["label"] = clean_properties["side"][0].upper()
+        else:
+            raise ValueError(f"unknown item kind: {kind}")
+
+        clean_items.append(
             {
-                "id": widget_id,
-                "module": module_id,
+                "id": item_id,
+                "kind": kind,
+                **({"module": module_id} if kind == "module" else {}),
                 **box,
                 "properties": clean_properties,
             }
         )
 
-    return {"background": clean_background, "widgets": clean_widgets}
+    return {"items": clean_items}
 
 
 def _render_background(
@@ -182,7 +250,11 @@ def _render_background(
     destination.parent.mkdir(parents=True, exist_ok=True)
     frames = []
     durations = []
-    with Image.open(source) as image:
+    if source.suffix.lower() == ".svg":
+        image_source = BytesIO(rasterize_svg_file(source))
+    else:
+        image_source = source
+    with Image.open(image_source) as image:
         frame_count = getattr(image, "n_frames", 1)
         loop = int(image.info.get("loop", 0))
         for frame_index in range(frame_count):
@@ -234,7 +306,7 @@ def write_design_screen(
     root: Path = ROOT,
 ) -> Path:
     modules = load_visual_modules(root)
-    design = validate_screen_design(profile, side, design, input_dir, modules)
+    design = validate_screen_design(profile, side, design, input_dir, modules, root)
     width, height = PROFILE_SIZES[profile]
     component = ET.Element("component")
     view = ET.SubElement(
@@ -251,47 +323,42 @@ def write_design_screen(
     )
 
     instances = []
-    if design["background"] is not None:
-        background = design["background"]
-        module = modules["background-image"]
-        asset_path = _render_background(
-            input_dir / background["image"],
-            asset_output_dir / f"background-{profile}-{side}.png",
-            (width, height),
-            {
-                "fit": background["fit"],
-                "x": background["focal_x"],
-                "y": background["focal_y"],
-                "rotation": background["rotation"],
-            },
-        )
-        module_path = root / module["source"]
-        params = {
-            "image_src": Path(os.path.relpath(asset_path, module_path.parent)).as_posix(),
-            "width": str(width),
-            "height": str(height),
-            "dither": background["dither"],
-        }
-        instance = {
-            "id": "background",
-            "x": 0,
-            "y": 0,
-            "width": width,
-            "height": height,
-        }
-        attributes = {
-            "editor_image": background["image"],
-            "editor_fit": background["fit"],
-            "editor_focal_x": str(background["focal_x"]),
-            "editor_focal_y": str(background["focal_y"]),
-            "editor_rotation": str(background["rotation"]),
-        }
-        instances.append((module, instance, params, attributes))
+    for item in design["items"]:
+        if item["kind"] == "image":
+            properties = item["properties"]
+            module = modules["background-image"]
+            asset_path = _render_background(
+                input_dir / properties["image"],
+                asset_output_dir / f"image-{profile}-{side}-{item['id']}.png",
+                (item["width"], item["height"]),
+                {
+                    "fit": properties["fit"],
+                    "x": properties["focal_x"],
+                    "y": properties["focal_y"],
+                    "rotation": properties["rotation"],
+                },
+            )
+            module_path = root / module["source"]
+            params = {
+                "image_src": Path(os.path.relpath(asset_path, module_path.parent)).as_posix(),
+                "width": str(module["bounds"]["width"]),
+                "height": str(module["bounds"]["height"]),
+                "dither": properties["dither"],
+            }
+            attributes = {
+                "editor_image": properties["image"],
+                "editor_fit": properties["fit"],
+                "editor_focal_x": str(properties["focal_x"]),
+                "editor_focal_y": str(properties["focal_y"]),
+                "editor_rotation": str(properties["rotation"]),
+                "editor_kind": "image",
+            }
+            instances.append((module, item, params, attributes))
+            continue
 
-    for widget in design["widgets"]:
-        module = modules[widget["module"]]
-        params = dict(widget["properties"])
-        instances.append((module, widget, params, {}))
+        module = modules[item["module"]]
+        params = dict(item["properties"])
+        instances.append((module, item, params, {}))
 
     for module, instance, params, metadata in instances:
         module_path = root / module["source"]
@@ -316,7 +383,7 @@ def load_design_screen(path: Path, root: Path = ROOT) -> dict[str, Any]:
     modules = load_visual_modules(root)
     root = ET.parse(path).getroot()
     design = empty_screen_design()
-    for include in root.iter("zmk_include"):
+    for index, include in enumerate(root.iter("zmk_include")):
         module_id = include.get("editor_module")
         if module_id not in modules:
             continue
@@ -325,19 +392,28 @@ def load_design_screen(path: Path, root: Path = ROOT) -> dict[str, Any]:
             key: int(float(include.get(f"editor_{key}", module["bounds"][key])))
             for key in ("x", "y", "width", "height")
         }
-        if module_id == "background-image":
-            design["background"] = {
-                "image": include.get("editor_image", ""),
-                "fit": include.get("editor_fit", "cover"),
-                "focal_x": float(include.get("editor_focal_x", "0.5")),
-                "focal_y": float(include.get("editor_focal_y", "0.5")),
-                "rotation": int(include.get("editor_rotation", "0")),
-                "dither": include.get("dither", "none"),
-            }
+        item_id = include.get("editor_id", f"item-{index + 1}")
+        if module_id == "background-image" or include.get("editor_kind") == "image":
+            design["items"].append(
+                {
+                    "id": item_id,
+                    "kind": "image",
+                    **box,
+                    "properties": {
+                        "image": include.get("editor_image", ""),
+                        "fit": include.get("editor_fit", "cover"),
+                        "focal_x": float(include.get("editor_focal_x", "0.5")),
+                        "focal_y": float(include.get("editor_focal_y", "0.5")),
+                        "rotation": int(include.get("editor_rotation", "0")),
+                        "dither": include.get("dither", "none"),
+                    },
+                }
+            )
             continue
-        design["widgets"].append(
+        design["items"].append(
             {
-                "id": include.get("editor_id", "widget"),
+                "id": item_id,
+                "kind": "module",
                 "module": module_id,
                 **box,
                 "properties": {

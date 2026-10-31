@@ -1,0 +1,3 @@
+<fragment>
+  <zmk_status_text field="layer.name" role="central" x="{{name_x}}" y="{{name_y}}" width="56" height="14" font_size="{{font_size}}" />
+</fragment>

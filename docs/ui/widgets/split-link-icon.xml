@@ -1,0 +1,8 @@
+<fragment>
+  <zmk_status_when field="split.connected" role="{{role}}" test="equals" value="true">
+    <lv_image src="{{connected_icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" />
+  </zmk_status_when>
+  <zmk_status_when field="split.connected" role="{{role}}" test="equals" value="false">
+    <lv_image src="{{disconnected_icon_src}}" x="{{icon_x}}" y="{{icon_y}}" width="20" height="20" />
+  </zmk_status_when>
+</fragment>
